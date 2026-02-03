@@ -92,7 +92,7 @@ resource "cloudflare_zero_trust_gateway_policy" "dni_tls_errors" {
 
   filters = ["http"]
 
-  traffic = format("http.request.host in $%s", cloudflare_zero_trust_list.tls_error_hosts.id)
+  traffic = format("http.conn.hostname in $%s", cloudflare_zero_trust_list.tls_error_hosts.id)
 }
 
 # -----------------------------------------------------------------------------
