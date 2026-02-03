@@ -1,10 +1,4 @@
 # -----------------------------------------------------------------------------
-# Data Sources
-# -----------------------------------------------------------------------------
-
-data "cloudflare_api_token_permission_groups" "all" {}
-
-# -----------------------------------------------------------------------------
 # KV Namespace for session correlation
 # -----------------------------------------------------------------------------
 
@@ -20,25 +14,8 @@ resource "cloudflare_workers_kv_namespace" "session_cache" {
 resource "cloudflare_zero_trust_list" "tls_error_hosts" {
   account_id  = var.account_id
   name        = "CLIENT_TLS_ERROR_SNI"
-  description = "Hostnames with TLS inspection errors - auto-populated by cf-dni-list worker"
+  description = "Hostnames with TLS inspection errors - auto-populated by tf-cf-dni-list worker"
   type        = "DOMAIN"
-}
-
-# -----------------------------------------------------------------------------
-# API Token for Worker (scoped to Zero Trust/Teams list management)
-# -----------------------------------------------------------------------------
-
-resource "cloudflare_api_token" "worker_list_token" {
-  name = "tf-cf-dni-list-worker"
-
-  policy {
-    permission_groups = [
-      data.cloudflare_api_token_permission_groups.all.account["Teams Write"],
-    ]
-    resources = {
-      "com.cloudflare.api.account.${var.account_id}" = "*"
-    }
-  }
 }
 
 # -----------------------------------------------------------------------------
@@ -47,35 +24,34 @@ resource "cloudflare_api_token" "worker_list_token" {
 # -----------------------------------------------------------------------------
 
 resource "cloudflare_workers_script" "dni_list" {
-  account_id = var.account_id
-  script_name       = "tf-cf-dni-list"
-  content    = file("${path.module}/worker.js")
+  account_id  = var.account_id
+  script_name = "tf-cf-dni-list"
+  content     = file("${path.module}/worker.js")
 
-  # ES modules format
-  module = true
-
-  bindings {
-    name = "SESSION_CACHE"
-    type = "kv_namespace"
-    kv_namespace_id = cloudflare_workers_kv_namespace.session_cache.id
-  }
-
-  bindings {
-    name = "ACCOUNT_ID"
-    type = "plain_text"
-    text = var.account_id
-  }
-
-  bindings {
-    name = "LIST_ID"
-    type = "plain_text"
-    text = cloudflare_zero_trust_list.tls_error_hosts.id
-  }
-
-  bindings {
-    name = "API_TOKEN"
-    type = "secret_text"
-    text = cloudflare_api_token.worker_list_token.value
+  metadata = {
+    main_module = "worker.js"
+    bindings = [
+      {
+        type         = "kv_namespace"
+        name         = "SESSION_CACHE"
+        namespace_id = cloudflare_workers_kv_namespace.session_cache.id
+      },
+      {
+        type = "plain_text"
+        name = "ACCOUNT_ID"
+        text = var.account_id
+      },
+      {
+        type = "plain_text"
+        name = "LIST_ID"
+        text = cloudflare_zero_trust_list.tls_error_hosts.id
+      },
+      {
+        type = "secret_text"
+        name = "API_TOKEN"
+        text = var.worker_api_token
+      }
+    ]
   }
 }
 
@@ -107,15 +83,16 @@ resource "cloudflare_logpush_job" "zero_trust_sessions" {
   enabled          = true
   dataset          = "zero_trust_network_sessions"
   destination_conf = "https://tf-cf-dni-list.${var.workers_subdomain}.workers.dev/"
-  filter           = jsonencode({
+  filter = jsonencode({
     where = {
       key      = "ConnectionCloseReason"
       operator = "eq"
       value    = "CLIENT_TLS_ERROR"
     }
   })
-  output_options {
+  output_options = {
     field_names = ["SessionID", "ConnectionCloseReason"]
+    output_type = "ndjson"
   }
 }
 
@@ -126,7 +103,8 @@ resource "cloudflare_logpush_job" "gateway_network" {
   enabled          = true
   dataset          = "gateway_network"
   destination_conf = "https://tf-cf-dni-list.${var.workers_subdomain}.workers.dev/gateway"
-  output_options {
+  output_options = {
     field_names = ["SessionID", "SNI"]
+    output_type = "ndjson"
   }
 }

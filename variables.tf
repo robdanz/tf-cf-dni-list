@@ -9,6 +9,12 @@ variable "cloudflare_api_token" {
   sensitive   = true
 }
 
+variable "worker_api_token" {
+  description = "Cloudflare API token for the worker to manage Gateway lists (requires Zero Trust Edit permission)"
+  type        = string
+  sensitive   = true
+}
+
 variable "workers_subdomain" {
   description = "Account's workers.dev subdomain (e.g., 'myaccount' for myaccount.workers.dev)"
   type        = string

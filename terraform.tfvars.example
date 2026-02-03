@@ -1,3 +1,4 @@
 account_id           = "your-cloudflare-account-id"
-cloudflare_api_token = "your-api-token"
+cloudflare_api_token = "your-terraform-api-token"
+worker_api_token     = "your-worker-api-token"
 workers_subdomain    = "your-workers-subdomain"

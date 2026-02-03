@@ -10,32 +10,49 @@ Cloudflare Worker that automatically adds hostnames causing TLS inspection failu
 
 ## Deployment
 
-1. Create a Cloudflare API token with permissions:
-   - Account → Workers Scripts → Edit
-   - Account → Workers KV Storage → Edit
-   - Account → Zero Trust → Edit
-   - Account → Logs → Edit
-   - Account → API Tokens → Edit
+### 1. Create API Tokens
 
-2. Clone and build:
-   ```bash
-   git clone git@github.com:robdanz/tf-cf-dni-list.git
-   cd tf-cf-dni-list
-   npm install
-   npm run build
-   ```
+You need **two** API tokens:
 
-3. Configure Terraform:
-   ```bash
-   cp terraform.tfvars.example terraform.tfvars
-   # Edit terraform.tfvars with your values
-   ```
+**Terraform Token** (for provisioning infrastructure):
+- Account → Workers Scripts → Edit
+- Account → Workers KV Storage → Edit
+- Account → Zero Trust → Edit
+- Account → Logs → Edit
 
-4. Deploy:
-   ```bash
-   terraform init
-   terraform apply
-   ```
+**Worker Token** (for the worker to manage Gateway lists):
+- Account → Zero Trust → Edit
+
+Create tokens at: My Profile → API Tokens → Create Token
+
+### 2. Clone and Build
+
+```bash
+git clone git@github.com:robdanz/tf-cf-dni-list.git
+cd tf-cf-dni-list
+npm install
+npm run build
+```
+
+### 3. Configure Terraform
+
+```bash
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your values
+```
+
+Variables:
+- `account_id` - Your Cloudflare account ID
+- `cloudflare_api_token` - Terraform token (for provisioning)
+- `worker_api_token` - Worker token (for Gateway list management)
+- `workers_subdomain` - Your workers.dev subdomain
+
+### 4. Deploy
+
+```bash
+terraform init
+terraform apply
+```
 
 ## Teardown
 
