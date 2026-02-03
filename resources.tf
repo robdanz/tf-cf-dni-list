@@ -26,6 +26,10 @@ resource "cloudflare_zero_trust_list" "tls_error_hosts" {
 resource "cloudflare_worker" "dni_list" {
   account_id = var.account_id
   name       = "tf-cf-dni-list"
+  subdomain = {
+    enabled          = true
+    previews_enabled = true
+  }
 }
 
 resource "cloudflare_worker_version" "dni_list" {
