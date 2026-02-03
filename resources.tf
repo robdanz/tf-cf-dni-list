@@ -81,14 +81,14 @@ resource "cloudflare_workers_deployment" "dni_list" {
 resource "cloudflare_zero_trust_gateway_policy" "dni_tls_errors" {
   account_id  = var.account_id
   name        = "Do Not Inspect - TLS Error Hosts"
-  description = "Bypass TLS inspection for hosts that fail with CLIENT_TLS_ERROR and are not approved apps"
+  description = "Bypass TLS inspection for hosts that fail with CLIENT_TLS_ERROR"
   enabled     = true
   action      = "off"
   precedence  = 10
 
   filters = ["http"]
 
-  traffic = "any(http.request.domains[*] in $${${cloudflare_zero_trust_list.tls_error_hosts.id}}) and any(app.statuses[*] in {\"unapproved\"})"
+  traffic = "any(http.request.domains[*] in $${${cloudflare_zero_trust_list.tls_error_hosts.id}})"
 }
 
 # -----------------------------------------------------------------------------
