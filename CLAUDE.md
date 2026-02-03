@@ -33,17 +33,21 @@ terraform destroy  # Remove all resources
 
 **Environment Bindings (configured by Terraform):**
 - `SESSION_CACHE` - KV namespace for session correlation
-- `API_TOKEN` - Cloudflare API token for Gateway list management
+- `API_KEY` - Cloudflare Global API Key
+- `API_EMAIL` - Cloudflare account email
 - `LIST_ID` - Gateway list UUID to append hostnames
 - `ACCOUNT_ID` - Cloudflare account ID
 
 **Terraform Resources (`resources.tf`):**
-- Worker script with all bindings
+- Uses Cloudflare provider v5 pattern: `cloudflare_worker` + `cloudflare_worker_version` + `cloudflare_workers_deployment`
 - KV namespace (`tf-cf-dni-list-session-cache`)
 - Gateway list (`CLIENT_TLS_ERROR_SNI`)
-- Scoped API token for worker
-- Gateway HTTP policy ("Do Not Inspect - TLS Error Hosts")
-- Two Logpush jobs (zero_trust_network_sessions, gateway_network)
+- Gateway HTTP policy ("Do Not Inspect - TLS Error Hosts") using `http.conn.hostname` selector
+- Two Logpush jobs (optional, controlled by `enable_logpush` variable)
+
+**Authentication:**
+- Terraform provider uses email + Global API Key (not scoped tokens)
+- Worker uses `X-Auth-Email` and `X-Auth-Key` headers for Cloudflare API calls
 
 ## Key Implementation Details
 
@@ -51,10 +55,21 @@ terraform destroy  # Remove all resources
 - Gzip detection via Content-Encoding header OR magic bytes (0x1f 0x8b)
 - Hostname validation: RFC-compliant, max 253 chars, alphanumeric + hyphen + dots
 - Partial success returns 207 status with `errors` array in response
+- Gateway policy uses `http.conn.hostname` selector (required for "Do Not Inspect" action)
+- Logpush jobs have `depends_on` to ensure worker is deployed before endpoint validation
 
-## Testing Locally
+## Configuration
 
-Use curl to simulate Logpush batches against a deployed worker:
+`terraform.tfvars` (not committed - contains secrets):
+```hcl
+account_id          = "your-cloudflare-account-id"
+cloudflare_email    = "your-cloudflare-email"
+cloudflare_api_key  = "your-global-api-key"
+workers_subdomain   = "your-workers-subdomain"
+enable_logpush      = true  # optional, requires Logpush entitlement
+```
+
+## Testing
 
 ```bash
 # Health check
