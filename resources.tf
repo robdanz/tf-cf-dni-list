@@ -88,7 +88,6 @@ resource "cloudflare_zero_trust_gateway_policy" "dni_tls_errors" {
   description = "Bypass TLS inspection for hosts that fail with CLIENT_TLS_ERROR"
   enabled     = true
   action      = "off"
-  precedence  = 10
 
   filters = ["http"]
 
