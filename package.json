@@ -1,0 +1,14 @@
+{
+  "name": "tf-cf-dni-list",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --format=esm --outfile=worker.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.2"
+  }
+}

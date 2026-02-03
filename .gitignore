@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.terraform.lock.hcl
+
+# Build output
+worker.js
+
+# Secrets
+.dev.vars
+
+# OS
+.DS_Store
