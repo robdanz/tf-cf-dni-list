@@ -111,6 +111,8 @@ resource "cloudflare_logpush_job" "zero_trust_sessions" {
   enabled          = true
   dataset          = "zero_trust_network_sessions"
   destination_conf = "https://tf-cf-dni-list.${var.workers_subdomain}.workers.dev/"
+
+  depends_on = [cloudflare_workers_deployment.dni_list]
   filter = jsonencode({
     where = {
       key      = "ConnectionCloseReason"
@@ -131,6 +133,8 @@ resource "cloudflare_logpush_job" "gateway_network" {
   enabled          = true
   dataset          = "gateway_network"
   destination_conf = "https://tf-cf-dni-list.${var.workers_subdomain}.workers.dev/gateway"
+
+  depends_on = [cloudflare_workers_deployment.dni_list]
   output_options = {
     field_names = ["SessionID", "SNI"]
     output_type = "ndjson"
