@@ -19,14 +19,26 @@ resource "cloudflare_zero_trust_list" "tls_error_hosts" {
 }
 
 # -----------------------------------------------------------------------------
-# Worker Script
+# Worker (v5 pattern: worker + version + deployment)
 # Note: Requires building the TypeScript first. Run: npm run build
 # -----------------------------------------------------------------------------
 
-resource "cloudflare_workers_script" "dni_list" {
-  account_id  = var.account_id
-  script_name = "tf-cf-dni-list"
-  content     = file("${path.module}/worker.js")
+resource "cloudflare_worker" "dni_list" {
+  account_id = var.account_id
+  name       = "tf-cf-dni-list"
+}
+
+resource "cloudflare_worker_version" "dni_list" {
+  account_id         = var.account_id
+  worker_id          = cloudflare_worker.dni_list.id
+  compatibility_date = "2024-11-01"
+  main_module        = "worker.js"
+
+  modules = [{
+    name         = "worker.js"
+    content_type = "application/javascript+module"
+    content_file = "worker.js"
+  }]
 
   bindings = [
     {
@@ -52,6 +64,16 @@ resource "cloudflare_workers_script" "dni_list" {
   ]
 }
 
+resource "cloudflare_workers_deployment" "dni_list" {
+  account_id  = var.account_id
+  script_name = cloudflare_worker.dni_list.name
+  strategy    = "percentage"
+  versions = [{
+    percentage = 100
+    version_id = cloudflare_worker_version.dni_list.id
+  }]
+}
+
 # -----------------------------------------------------------------------------
 # Gateway HTTP Policy - Do Not Inspect for TLS error hosts
 # -----------------------------------------------------------------------------
@@ -66,15 +88,16 @@ resource "cloudflare_zero_trust_gateway_policy" "dni_tls_errors" {
 
   filters = ["http"]
 
-  traffic = "any(http.request.domains[*] in $${cloudflare_zero_trust_list.tls_error_hosts.id}) and any(app.statuses[*] in {\"unapproved\"})"
+  traffic = "any(http.request.domains[*] in $${${cloudflare_zero_trust_list.tls_error_hosts.id}}) and any(app.statuses[*] in {\"unapproved\"})"
 }
 
 # -----------------------------------------------------------------------------
-# Logpush Jobs
+# Logpush Jobs (requires Logpush entitlement - Enterprise or Zero Trust add-on)
+# Set enable_logpush = true in terraform.tfvars if your account has access
 # -----------------------------------------------------------------------------
 
-# Zero Trust Network Sessions - filtered to CLIENT_TLS_ERROR at Logpush level
 resource "cloudflare_logpush_job" "zero_trust_sessions" {
+  count            = var.enable_logpush ? 1 : 0
   account_id       = var.account_id
   name             = "tf-cf-dni-list-zero-trust"
   enabled          = true
@@ -93,8 +116,8 @@ resource "cloudflare_logpush_job" "zero_trust_sessions" {
   }
 }
 
-# Gateway Network - all events, worker correlates by SessionID
 resource "cloudflare_logpush_job" "gateway_network" {
+  count            = var.enable_logpush ? 1 : 0
   account_id       = var.account_id
   name             = "tf-cf-dni-list-gateway"
   enabled          = true

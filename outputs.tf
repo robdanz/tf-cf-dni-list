@@ -22,3 +22,8 @@ output "gateway_list_name" {
   description = "Name of the Gateway list"
   value       = cloudflare_zero_trust_list.tls_error_hosts.name
 }
+
+output "worker_id" {
+  description = "ID of the deployed worker"
+  value       = cloudflare_worker.dni_list.id
+}
