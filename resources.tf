@@ -28,31 +28,28 @@ resource "cloudflare_workers_script" "dni_list" {
   script_name = "tf-cf-dni-list"
   content     = file("${path.module}/worker.js")
 
-  metadata = {
-    main_module = "worker.js"
-    bindings = [
-      {
-        type         = "kv_namespace"
-        name         = "SESSION_CACHE"
-        namespace_id = cloudflare_workers_kv_namespace.session_cache.id
-      },
-      {
-        type = "plain_text"
-        name = "ACCOUNT_ID"
-        text = var.account_id
-      },
-      {
-        type = "plain_text"
-        name = "LIST_ID"
-        text = cloudflare_zero_trust_list.tls_error_hosts.id
-      },
-      {
-        type = "secret_text"
-        name = "API_TOKEN"
-        text = var.cloudflare_api_token
-      }
-    ]
-  }
+  bindings = [
+    {
+      type         = "kv_namespace"
+      name         = "SESSION_CACHE"
+      namespace_id = cloudflare_workers_kv_namespace.session_cache.id
+    },
+    {
+      type = "plain_text"
+      name = "ACCOUNT_ID"
+      text = var.account_id
+    },
+    {
+      type = "plain_text"
+      name = "LIST_ID"
+      text = cloudflare_zero_trust_list.tls_error_hosts.id
+    },
+    {
+      type = "secret_text"
+      name = "API_TOKEN"
+      text = var.cloudflare_api_token
+    }
+  ]
 }
 
 # -----------------------------------------------------------------------------
