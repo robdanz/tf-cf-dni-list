@@ -62,8 +62,13 @@ resource "cloudflare_worker_version" "dni_list" {
     },
     {
       type = "secret_text"
-      name = "API_TOKEN"
-      text = var.cloudflare_api_token
+      name = "API_KEY"
+      text = var.cloudflare_api_key
+    },
+    {
+      type = "plain_text"
+      name = "API_EMAIL"
+      text = var.cloudflare_email
     }
   ]
 }

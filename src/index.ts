@@ -30,7 +30,8 @@ interface GatewayNetworkLog {
 }
 
 interface Env {
-  API_TOKEN: string;
+  API_KEY: string;
+  API_EMAIL: string;
   LIST_ID: string;
   ACCOUNT_ID: string;
   SESSION_CACHE: KVNamespace;
@@ -359,7 +360,8 @@ async function getListHostnames(env: Env): Promise<Set<string>> {
   const url = `https://api.cloudflare.com/client/v4/accounts/${env.ACCOUNT_ID}/gateway/lists/${env.LIST_ID}/items`;
   const res = await fetch(url, {
     headers: {
-      Authorization: `Bearer ${env.API_TOKEN}`,
+      "X-Auth-Email": env.API_EMAIL,
+      "X-Auth-Key": env.API_KEY,
     },
   });
 
@@ -386,7 +388,8 @@ async function appendToList(env: Env, hostname: string): Promise<void> {
   const res = await fetch(url, {
     method: "PATCH",
     headers: {
-      Authorization: `Bearer ${env.API_TOKEN}`,
+      "X-Auth-Email": env.API_EMAIL,
+      "X-Auth-Key": env.API_KEY,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
