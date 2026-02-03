@@ -49,7 +49,7 @@ resource "cloudflare_workers_script" "dni_list" {
       {
         type = "secret_text"
         name = "API_TOKEN"
-        text = var.worker_api_token
+        text = var.cloudflare_api_token
       }
     ]
   }

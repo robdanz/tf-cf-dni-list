@@ -4,13 +4,7 @@ variable "account_id" {
 }
 
 variable "cloudflare_api_token" {
-  description = "Cloudflare API token with permissions to create all resources (Workers, KV, Zero Trust, Logpush)"
-  type        = string
-  sensitive   = true
-}
-
-variable "worker_api_token" {
-  description = "Cloudflare API token for the worker to manage Gateway lists (requires Zero Trust Edit permission)"
+  description = "Cloudflare API token with permissions for Workers, KV, Zero Trust, and Logpush"
   type        = string
   sensitive   = true
 }

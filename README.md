@@ -10,20 +10,15 @@ Cloudflare Worker that automatically adds hostnames causing TLS inspection failu
 
 ## Deployment
 
-### 1. Create API Tokens
+### 1. Create API Token
 
-You need **two** API tokens:
+Create a token at: My Profile → API Tokens → Create Token
 
-**Terraform Token** (for provisioning infrastructure):
+Required permissions:
 - Account → Workers Scripts → Edit
 - Account → Workers KV Storage → Edit
 - Account → Zero Trust → Edit
 - Account → Logs → Edit
-
-**Worker Token** (for the worker to manage Gateway lists):
-- Account → Zero Trust → Edit
-
-Create tokens at: My Profile → API Tokens → Create Token
 
 ### 2. Clone and Build
 
@@ -40,12 +35,6 @@ npm run build
 cp terraform.tfvars.example terraform.tfvars
 # Edit terraform.tfvars with your values
 ```
-
-Variables:
-- `account_id` - Your Cloudflare account ID
-- `cloudflare_api_token` - Terraform token (for provisioning)
-- `worker_api_token` - Worker token (for Gateway list management)
-- `workers_subdomain` - Your workers.dev subdomain
 
 ### 4. Deploy
 
