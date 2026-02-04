@@ -107,15 +107,25 @@ data "http" "gateway_rules" {
 
 locals {
   gateway_rules = jsondecode(data.http.gateway_rules.response_body).result
-  # Filter to HTTP policies only, excluding our own policy if it exists
-  http_policies = [
+  # Get all precedence values from ALL rules (excluding our own policy)
+  # Precedence is shared across DNS, network, and HTTP policies
+  all_precedences = toset([
     for rule in local.gateway_rules :
-    rule if contains(rule.filters, "http") && rule.name != "Do Not Inspect - TLS Error Hosts"
-  ]
-  # Find minimum precedence, default to 1000 if no other HTTP policies exist
-  min_http_precedence = length(local.http_policies) > 0 ? min([for p in local.http_policies : p.precedence]...) : 1000
-  # Our policy precedence is one less than the minimum (lower = higher priority)
-  dni_precedence = local.min_http_precedence - 1
+    rule.precedence if rule.name != "Do Not Inspect - TLS Error Hosts"
+  ])
+  # Find the minimum precedence currently in use
+  min_precedence = length(local.all_precedences) > 0 ? min(local.all_precedences...) : 1000
+  # Find first available precedence starting from 0
+  # Check values 0 through min-1 to find unused slot, otherwise use min-100
+  dni_precedence = (
+    !contains(local.all_precedences, 0) ? 0 :
+    !contains(local.all_precedences, 1) ? 1 :
+    !contains(local.all_precedences, 2) ? 2 :
+    !contains(local.all_precedences, 3) ? 3 :
+    !contains(local.all_precedences, 4) ? 4 :
+    !contains(local.all_precedences, 5) ? 5 :
+    local.min_precedence - 100
+  )
 }
 
 resource "cloudflare_zero_trust_gateway_policy" "dni_tls_errors" {
