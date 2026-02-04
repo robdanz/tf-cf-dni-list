@@ -23,6 +23,16 @@ output "gateway_list_name" {
   value       = cloudflare_zero_trust_list.tls_error_hosts.name
 }
 
+output "bypass_inspection_list_id" {
+  description = "ID of the manually managed bypass inspection list"
+  value       = cloudflare_zero_trust_list.bypass_inspection.id
+}
+
+output "bypass_inspection_list_name" {
+  description = "Name of the bypass inspection list"
+  value       = cloudflare_zero_trust_list.bypass_inspection.name
+}
+
 output "worker_id" {
   description = "ID of the deployed worker"
   value       = cloudflare_worker.dni_list.id

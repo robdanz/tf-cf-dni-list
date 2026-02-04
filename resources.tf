@@ -8,13 +8,20 @@ resource "cloudflare_workers_kv_namespace" "session_cache" {
 }
 
 # -----------------------------------------------------------------------------
-# Gateway List for TLS error hostnames
+# Gateway Lists
 # -----------------------------------------------------------------------------
 
 resource "cloudflare_zero_trust_list" "tls_error_hosts" {
   account_id  = var.account_id
   name        = "CLIENT_TLS_ERROR_SNI"
   description = "Hostnames with TLS inspection errors - auto-populated by tf-cf-dni-list worker"
+  type        = "DOMAIN"
+}
+
+resource "cloudflare_zero_trust_list" "bypass_inspection" {
+  account_id  = var.account_id
+  name        = "BYPASS-INSPECTION-DOMAINS"
+  description = "Manually managed bypass domains, excluding unapproved apps"
   type        = "DOMAIN"
 }
 
@@ -136,14 +143,18 @@ locals {
 resource "cloudflare_zero_trust_gateway_policy" "dni_tls_errors" {
   account_id  = var.account_id
   name        = "Do Not Inspect - TLS Error Hosts"
-  description = "Bypass TLS inspection for hosts that fail with CLIENT_TLS_ERROR"
+  description = "Bypass TLS inspection for TLS error hosts (excluding unapproved apps) or manually approved bypass domains"
   precedence  = local.dni_precedence
   enabled     = true
   action      = "off"
 
   filters = ["http"]
 
-  traffic = format("http.conn.hostname in $%s and not(any(app.statuses[*] == \"unapproved\"))", cloudflare_zero_trust_list.tls_error_hosts.id)
+  traffic = format(
+    "(http.conn.hostname in $%s and not(any(app.statuses[*] == \"unapproved\"))) or (any(http.request.domains[*] in $%s) and not(any(app.statuses[*] == \"unapproved\")))",
+    cloudflare_zero_trust_list.tls_error_hosts.id,
+    cloudflare_zero_trust_list.bypass_inspection.id
+  )
 }
 
 # -----------------------------------------------------------------------------
