@@ -27,3 +27,8 @@ output "worker_id" {
   description = "ID of the deployed worker"
   value       = cloudflare_worker.dni_list.id
 }
+
+output "dni_policy_precedence" {
+  description = "Calculated precedence for the DNI policy (lower = higher priority)"
+  value       = local.dni_precedence
+}

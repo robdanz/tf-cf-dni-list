@@ -95,10 +95,34 @@ resource "cloudflare_workers_deployment" "dni_list" {
 # Gateway HTTP Policy - Do Not Inspect for TLS error hosts
 # -----------------------------------------------------------------------------
 
+# Fetch current Gateway rules to calculate precedence
+data "http" "gateway_rules" {
+  url = "https://api.cloudflare.com/client/v4/accounts/${var.account_id}/gateway/rules"
+
+  request_headers = {
+    X-Auth-Email = var.cloudflare_email
+    X-Auth-Key   = var.cloudflare_api_key
+  }
+}
+
+locals {
+  gateway_rules = jsondecode(data.http.gateway_rules.response_body).result
+  # Filter to HTTP policies only, excluding our own policy if it exists
+  http_policies = [
+    for rule in local.gateway_rules :
+    rule if contains(rule.filters, "http") && rule.name != "Do Not Inspect - TLS Error Hosts"
+  ]
+  # Find minimum precedence, default to 1000 if no other HTTP policies exist
+  min_http_precedence = length(local.http_policies) > 0 ? min([for p in local.http_policies : p.precedence]...) : 1000
+  # Our policy precedence is one less than the minimum (lower = higher priority)
+  dni_precedence = local.min_http_precedence - 1
+}
+
 resource "cloudflare_zero_trust_gateway_policy" "dni_tls_errors" {
   account_id  = var.account_id
   name        = "Do Not Inspect - TLS Error Hosts"
   description = "Bypass TLS inspection for hosts that fail with CLIENT_TLS_ERROR"
+  precedence  = local.dni_precedence
   enabled     = true
   action      = "off"
 
