@@ -24,3 +24,9 @@ variable "enable_logpush" {
   type        = bool
   default     = false
 }
+
+variable "logpush_secret" {
+  description = "Shared secret for Logpush authentication (generate with: openssl rand -hex 32)"
+  type        = string
+  sensitive   = true
+}

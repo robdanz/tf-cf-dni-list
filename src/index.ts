@@ -35,6 +35,16 @@ interface Env {
   LIST_ID: string;
   ACCOUNT_ID: string;
   SESSION_CACHE: KVNamespace;
+  LOGPUSH_SECRET: string;
+}
+
+/** Validate the X-Logpush-Secret header matches the configured secret. */
+function validateSecret(request: Request, env: Env): Response | null {
+  const secret = request.headers.get("X-Logpush-Secret");
+  if (!secret || secret !== env.LOGPUSH_SECRET) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  return null;
 }
 
 export default {
@@ -53,6 +63,8 @@ export default {
     }
 
     if (url.pathname === "/" && request.method === "POST") {
+      const authError = validateSecret(request, env);
+      if (authError) return authError;
       try {
         return await handleZeroTrustSessions(request, env);
       } catch (e) {
@@ -67,6 +79,9 @@ export default {
     }
 
     if (url.pathname === "/gateway" && request.method === "POST") {
+      const authError = validateSecret(request, env);
+      if (authError) return authError;
+
       try {
         return await handleGatewayNetwork(request, env);
       } catch (e) {

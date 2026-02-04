@@ -77,6 +77,11 @@ resource "cloudflare_worker_version" "dni_list" {
       type = "plain_text"
       name = "API_EMAIL"
       text = var.cloudflare_email
+    },
+    {
+      type = "secret_text"
+      name = "LOGPUSH_SECRET"
+      text = var.logpush_secret
     }
   ]
 }
@@ -152,7 +157,7 @@ resource "cloudflare_logpush_job" "zero_trust_sessions" {
   name             = "tf-cf-dni-list-zero-trust"
   enabled          = true
   dataset          = "zero_trust_network_sessions"
-  destination_conf = "https://tf-cf-dni-list.${var.workers_subdomain}.workers.dev/"
+  destination_conf = "https://tf-cf-dni-list.${var.workers_subdomain}.workers.dev/?header_X-Logpush-Secret=${var.logpush_secret}"
 
   depends_on = [cloudflare_workers_deployment.dni_list]
   filter = jsonencode({
@@ -174,7 +179,7 @@ resource "cloudflare_logpush_job" "gateway_network" {
   name             = "tf-cf-dni-list-gateway"
   enabled          = true
   dataset          = "gateway_network"
-  destination_conf = "https://tf-cf-dni-list.${var.workers_subdomain}.workers.dev/gateway"
+  destination_conf = "https://tf-cf-dni-list.${var.workers_subdomain}.workers.dev/gateway?header_X-Logpush-Secret=${var.logpush_secret}"
 
   depends_on = [cloudflare_workers_deployment.dni_list]
   output_options = {
