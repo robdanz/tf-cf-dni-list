@@ -157,9 +157,9 @@ resource "cloudflare_zero_trust_gateway_policy" "dni_tls_errors" {
   filters = ["http"]
 
   traffic = format(
-    "(any(http.conn.domains[*] in $%s) and not(any(app.statuses[*] == \"unapproved\"))) or (http.conn.hostname in $%s and not(any(app.statuses[*] == \"unapproved\")))",
-    cloudflare_zero_trust_list.bypass_inspection.id,
-    cloudflare_zero_trust_list.tls_error_hosts.id
+    "(http.conn.hostname in $%s and not(any(app.statuses[*] == \"unapproved\"))) or (any(http.conn.domains[*] in $%s) and not(any(app.statuses[*] == \"unapproved\")))",
+    cloudflare_zero_trust_list.tls_error_hosts.id,
+    cloudflare_zero_trust_list.bypass_inspection.id
   )
 }
 
