@@ -103,6 +103,12 @@ resource "cloudflare_workers_deployment" "dni_list" {
   }]
 }
 
+# Wait for worker deployment to propagate globally before Logpush validation
+resource "time_sleep" "wait_for_worker" {
+  depends_on      = [cloudflare_workers_deployment.dni_list]
+  create_duration = "10s"
+}
+
 # -----------------------------------------------------------------------------
 # Gateway HTTP Policy - Do Not Inspect for TLS error hosts
 # -----------------------------------------------------------------------------
@@ -170,7 +176,7 @@ resource "cloudflare_logpush_job" "zero_trust_sessions" {
   dataset          = "zero_trust_network_sessions"
   destination_conf = "https://tf-cf-dni-list.${var.workers_subdomain}.workers.dev/?header_X-Logpush-Secret=${var.logpush_secret}"
 
-  depends_on = [cloudflare_workers_deployment.dni_list]
+  depends_on = [time_sleep.wait_for_worker]
   filter = jsonencode({
     where = {
       key      = "ConnectionCloseReason"
@@ -192,7 +198,7 @@ resource "cloudflare_logpush_job" "gateway_network" {
   dataset          = "gateway_network"
   destination_conf = "https://tf-cf-dni-list.${var.workers_subdomain}.workers.dev/gateway?header_X-Logpush-Secret=${var.logpush_secret}"
 
-  depends_on = [cloudflare_workers_deployment.dni_list]
+  depends_on = [time_sleep.wait_for_worker]
   output_options = {
     field_names = ["SessionID", "SNI"]
     output_type = "ndjson"
