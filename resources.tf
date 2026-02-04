@@ -13,14 +13,14 @@ resource "cloudflare_workers_kv_namespace" "session_cache" {
 
 resource "cloudflare_zero_trust_list" "tls_error_hosts" {
   account_id  = var.account_id
-  name        = "CLIENT_TLS_ERROR_SNI"
+  name        = "01-CLIENT_TLS_ERROR_SNI"
   description = "Hostnames with TLS inspection errors - auto-populated by tf-cf-dni-list worker"
   type        = "DOMAIN"
 }
 
 resource "cloudflare_zero_trust_list" "bypass_inspection" {
   account_id  = var.account_id
-  name        = "BYPASS-INSPECTION-DOMAINS"
+  name        = "01-BYPASS-INSPECTION-DOMAINS"
   description = "Manually managed bypass domains, excluding unapproved apps"
   type        = "DOMAIN"
 }
