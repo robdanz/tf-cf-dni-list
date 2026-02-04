@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Cloudflare Worker that acts as a Logpush HTTP destination for Zero Trust network session logs. It correlates two log streams via KV to identify hostnames causing TLS inspection failures and adds them to a Gateway list for automatic "Do Not Inspect" policy application.
+Cloudflare Worker that acts as a Logpush HTTP destination for Zero Trust network session logs. It correlates two log streams via KV to identify hostnames causing TLS inspection failures and adds them to Gateway lists for automatic "Do Not Inspect" policy application. Excludes unapproved applications from bypass to prevent inadvertent allow.
 
 ## Commands
 
 ```bash
 npm run build      # Bundle TypeScript to worker.js (required before terraform apply)
 npm run typecheck  # TypeScript type checking
-terraform init     # Initialize Terraform
+terraform init     # Initialize Terraform (run after adding providers)
 terraform plan     # Preview infrastructure changes
 terraform apply    # Deploy all resources
 terraform destroy  # Remove all resources
@@ -20,6 +20,10 @@ terraform destroy  # Remove all resources
 ## Architecture
 
 **Single source file:** `src/index.ts` contains all worker logic.
+
+**Two Gateway Lists:**
+- `01-CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames from TLS errors
+- `01-BYPASS-INSPECTION-DOMAINS` - Manually managed domain overrides
 
 **Data Flow:**
 1. `POST /` receives `zero_trust_network_sessions` logs filtered to `CLIENT_TLS_ERROR` → stores `pending:{SessionID}` in KV
@@ -35,28 +39,39 @@ terraform destroy  # Remove all resources
 - `SESSION_CACHE` - KV namespace for session correlation
 - `API_KEY` - Cloudflare Global API Key
 - `API_EMAIL` - Cloudflare account email
-- `LIST_ID` - Gateway list UUID to append hostnames
+- `LIST_ID` - Gateway list UUID for auto-populated hostnames
 - `ACCOUNT_ID` - Cloudflare account ID
+- `LOGPUSH_SECRET` - Shared secret for endpoint authentication
 
-**Terraform Resources (`resources.tf`):**
-- Uses Cloudflare provider v5 pattern: `cloudflare_worker` + `cloudflare_worker_version` + `cloudflare_workers_deployment`
-- KV namespace (`tf-cf-dni-list-session-cache`)
-- Gateway list (`CLIENT_TLS_ERROR_SNI`)
-- Gateway HTTP policy ("Do Not Inspect - TLS Error Hosts") using `http.conn.hostname` selector
-- Two Logpush jobs (optional, controlled by `enable_logpush` variable)
+**Gateway Policy Traffic Selector:**
+```
+(http.conn.hostname in $TLS_ERROR_LIST and NOT unapproved)
+OR (http.conn.domains in $BYPASS_LIST and NOT unapproved)
+```
 
-**Authentication:**
-- Terraform provider uses email + Global API Key (not scoped tokens)
-- Worker uses `X-Auth-Email` and `X-Auth-Key` headers for Cloudflare API calls
+## Terraform Resources
+
+Uses Cloudflare provider v5 pattern plus `http` and `time` providers.
+
+**Key resources in `resources.tf`:**
+- `cloudflare_worker` + `cloudflare_worker_version` + `cloudflare_workers_deployment`
+- `cloudflare_workers_kv_namespace` for session correlation
+- Two `cloudflare_zero_trust_list` resources (auto + manual)
+- `cloudflare_zero_trust_gateway_policy` with dynamic precedence
+- `time_sleep` - 10s delay after deployment for Logpush validation
+- `data.http.gateway_rules` - Fetches existing rules to calculate unique precedence
+
+**Precedence calculation:** Queries existing Gateway rules via API and finds first available slot starting from 0 to ensure highest priority.
 
 ## Key Implementation Details
 
 - Worker returns 200 even on errors to prevent Logpush failures (error details in JSON body)
+- Logpush endpoint requires `X-Logpush-Secret` header (returns 401 without it)
 - Gzip detection via Content-Encoding header OR magic bytes (0x1f 0x8b)
 - Hostname validation: RFC-compliant, max 253 chars, alphanumeric + hyphen + dots
 - Partial success returns 207 status with `errors` array in response
-- Gateway policy uses `http.conn.hostname` selector (required for "Do Not Inspect" action)
-- Logpush jobs have `depends_on` to ensure worker is deployed before endpoint validation
+- "Do Not Inspect" rules can only use pre-TLS selectors (`http.conn.hostname`, `http.conn.domains`)
+- Logpush jobs depend on `time_sleep` to allow worker propagation before validation
 
 ## Configuration
 
@@ -66,22 +81,25 @@ account_id          = "your-cloudflare-account-id"
 cloudflare_email    = "your-cloudflare-email"
 cloudflare_api_key  = "your-global-api-key"
 workers_subdomain   = "your-workers-subdomain"
-enable_logpush      = true  # optional, requires Logpush entitlement
+enable_logpush      = true
+logpush_secret      = "generate-with-openssl-rand-hex-32"
 ```
 
 ## Testing
 
 ```bash
-# Health check
+# Health check (no auth required)
 curl https://tf-cf-dni-list.YOUR_SUBDOMAIN.workers.dev/
 
-# Simulate zero_trust batch
+# Simulate zero_trust batch (requires secret header)
 curl -X POST https://tf-cf-dni-list.YOUR_SUBDOMAIN.workers.dev/ \
+  -H "X-Logpush-Secret: YOUR_SECRET" \
   -H "Content-Type: application/x-ndjson" \
   -d '{"ConnectionCloseReason":"CLIENT_TLS_ERROR","SessionID":"test-123"}'
 
 # Simulate gateway_network batch (completes correlation)
 curl -X POST https://tf-cf-dni-list.YOUR_SUBDOMAIN.workers.dev/gateway \
+  -H "X-Logpush-Secret: YOUR_SECRET" \
   -H "Content-Type: application/x-ndjson" \
   -d '{"SessionID":"test-123","SNI":"example.com"}'
 ```
