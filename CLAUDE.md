@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Cloudflare Worker that acts as a Logpush HTTP destination for Zero Trust network session logs. It correlates two log streams via KV to identify hostnames causing TLS inspection failures and adds them to Gateway lists for automatic "Do Not Inspect" policy application. Excludes unapproved applications from bypass to prevent inadvertent allow.
+Cloudflare Worker that acts as a Logpush HTTP destination for Zero Trust network session logs. It correlates two log streams via KV to identify hostnames causing TLS inspection failures and adds them to a Gateway list for automatic "Do Not Inspect" policy application. The policy filters TLS error hosts by security categories, content categories, and application approval status to prevent bypassing inspection for dangerous or unapproved destinations.
 
 ## Commands
 
@@ -51,6 +51,12 @@ OR (Content Categories not in {Security Risks, New Domains, Newly Seen Domains, 
 OR (Host in $TLS_ERROR_LIST AND Application Status is not unapproved)
 ```
 
+**Security Category IDs (hardcoded in traffic expression):**
+68=Anonymizer, 178=Brand Embedding, 80=C2/Botnet, 187=Compromised Domain, 83=Cryptomining, 176=DGA Domains, 175=DNS Tunneling, 117=Malware, 131=Phishing, 188=PUP, 134=Private IP, 191=Scam, 151=Spam, 153=Spyware
+
+**Content Category IDs (hardcoded in traffic expression):**
+32=Security Risks, 169=New Domains, 177=Newly Seen Domains, 128=Parked & For Sale Domains
+
 ## Terraform Resources
 
 Uses Cloudflare provider v5 pattern plus `http` and `time` providers.
@@ -59,7 +65,7 @@ Uses Cloudflare provider v5 pattern plus `http` and `time` providers.
 - `cloudflare_worker` + `cloudflare_worker_version` + `cloudflare_workers_deployment`
 - `cloudflare_workers_kv_namespace` for session correlation
 - Two `cloudflare_zero_trust_list` resources (auto + manual)
-- `cloudflare_zero_trust_gateway_policy` with dynamic precedence
+- `cloudflare_zero_trust_gateway_policy` (Do Not Inspect) with dynamic precedence
 - `time_sleep` - 10s delay after deployment for Logpush validation
 - `data.http.gateway_rules` - Fetches existing rules to calculate unique precedence
 
