@@ -21,9 +21,10 @@ terraform destroy  # Remove all resources
 
 **Single source file:** `src/index.ts` contains all worker logic.
 
-**Two Gateway Lists:**
+**Three Gateway Lists:**
 - `01-CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames from TLS errors
 - `01-BYPASS-INSPECTION-DOMAINS` - Manually managed domain overrides
+- `01-DOMAIN-BLOCKLIST` - Manually managed domain blocklist (excluded from bypass)
 
 **Data Flow:**
 1. `POST /` receives `zero_trust_network_sessions` logs filtered to `CLIENT_TLS_ERROR` → stores `pending:{SessionID}` in KV
@@ -43,10 +44,13 @@ terraform destroy  # Remove all resources
 - `ACCOUNT_ID` - Cloudflare account ID
 - `LOGPUSH_SECRET` - Shared secret for endpoint authentication
 
-**Gateway Policy Traffic Selector:**
+**Gateway Policy Traffic Selector (5 OR groups):**
 ```
-(http.conn.hostname in $TLS_ERROR_LIST and NOT unapproved)
-OR (http.conn.domains in $BYPASS_LIST and NOT unapproved)
+Domain in $BYPASS_LIST
+OR Domain not in $DOMAIN_BLOCKLIST
+OR (Security Categories not in {Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware} AND Host in $TLS_ERROR_LIST)
+OR (Content Categories not in {Security Risks, New Domains, Newly Seen Domains, Parked & For Sale} AND Host in $TLS_ERROR_LIST)
+OR (Host in $TLS_ERROR_LIST AND Application Status is not unapproved)
 ```
 
 ## Terraform Resources
@@ -56,7 +60,7 @@ Uses Cloudflare provider v5 pattern plus `http` and `time` providers.
 **Key resources in `resources.tf`:**
 - `cloudflare_worker` + `cloudflare_worker_version` + `cloudflare_workers_deployment`
 - `cloudflare_workers_kv_namespace` for session correlation
-- Two `cloudflare_zero_trust_list` resources (auto + manual)
+- Three `cloudflare_zero_trust_list` resources (auto + 2 manual)
 - `cloudflare_zero_trust_gateway_policy` with dynamic precedence
 - `time_sleep` - 10s delay after deployment for Logpush validation
 - `data.http.gateway_rules` - Fetches existing rules to calculate unique precedence
@@ -70,7 +74,7 @@ Uses Cloudflare provider v5 pattern plus `http` and `time` providers.
 - Gzip detection via Content-Encoding header OR magic bytes (0x1f 0x8b)
 - Hostname validation: RFC-compliant, max 253 chars, alphanumeric + hyphen + dots
 - Partial success returns 207 status with `errors` array in response
-- "Do Not Inspect" rules can only use pre-TLS selectors (`http.conn.hostname`, `http.conn.domains`)
+- "Do Not Inspect" rules use pre-TLS selectors (`http.conn.hostname`, `http.conn.domains`, `http.conn.security_category`, `http.conn.content_category`, `app.statuses`)
 - Logpush jobs depend on `time_sleep` to allow worker propagation before validation
 
 ## Configuration

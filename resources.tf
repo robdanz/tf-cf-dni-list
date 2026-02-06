@@ -25,6 +25,13 @@ resource "cloudflare_zero_trust_list" "bypass_inspection" {
   type        = "DOMAIN"
 }
 
+resource "cloudflare_zero_trust_list" "domain_blocklist" {
+  account_id  = var.account_id
+  name        = "01-DOMAIN-BLOCKLIST"
+  description = "Manually managed domain blocklist - domains excluded from Do Not Inspect bypass"
+  type        = "DOMAIN"
+}
+
 # -----------------------------------------------------------------------------
 # Worker (v5 pattern: worker + version + deployment)
 # Note: Requires building the TypeScript first. Run: npm run build
@@ -125,16 +132,20 @@ data "http" "gateway_rules" {
 
 locals {
   gateway_rules = jsondecode(data.http.gateway_rules.response_body).result
-  # Get all precedence values from ALL rules (excluding our own policy)
+  # Managed policy names to exclude from precedence calculations
+  managed_policy_names = toset([
+    "Do Not Inspect - TLS Error Hosts",
+    "Block - Domain Blocklist",
+  ])
+  # Get all precedence values from ALL rules (excluding our own policies)
   # Precedence is shared across DNS, network, and HTTP policies
   all_precedences = toset([
     for rule in local.gateway_rules :
-    rule.precedence if rule.name != "Do Not Inspect - TLS Error Hosts"
+    rule.precedence if !contains(local.managed_policy_names, rule.name)
   ])
   # Find the minimum precedence currently in use
   min_precedence = length(local.all_precedences) > 0 ? min(local.all_precedences...) : 1000
-  # Find first available precedence starting from 0
-  # Check values 0 through min-1 to find unused slot, otherwise use min-100
+  # Find first two available precedence slots starting from 0
   dni_precedence = (
     !contains(local.all_precedences, 0) ? 0 :
     !contains(local.all_precedences, 1) ? 1 :
@@ -144,12 +155,19 @@ locals {
     !contains(local.all_precedences, 5) ? 5 :
     local.min_precedence - 100
   )
+  # Block policy gets the next available slot after DNI
+  block_precedence = (
+    !contains(local.all_precedences, local.dni_precedence + 1) ? local.dni_precedence + 1 :
+    !contains(local.all_precedences, local.dni_precedence + 2) ? local.dni_precedence + 2 :
+    !contains(local.all_precedences, local.dni_precedence + 3) ? local.dni_precedence + 3 :
+    local.dni_precedence + 100
+  )
 }
 
 resource "cloudflare_zero_trust_gateway_policy" "dni_tls_errors" {
   account_id  = var.account_id
   name        = "Do Not Inspect - TLS Error Hosts"
-  description = "Bypass TLS inspection for TLS error hosts (excluding unapproved apps) or manually approved bypass domains"
+  description = "Bypass TLS inspection for approved bypass domains, non-blocklisted domains, and TLS error hosts filtered by security/content categories and app approval status"
   precedence  = local.dni_precedence
   enabled     = true
   action      = "off"
@@ -157,9 +175,28 @@ resource "cloudflare_zero_trust_gateway_policy" "dni_tls_errors" {
   filters = ["http"]
 
   traffic = format(
-    "(http.conn.hostname in $%s and not(any(app.statuses[*] == \"unapproved\"))) or (any(http.conn.domains[*] in $%s) and not(any(app.statuses[*] == \"unapproved\")))",
+    "any(http.conn.domains[*] in $%s) or not(any(http.conn.domains[*] in $%s)) or (not(any(http.conn.security_category[*] in {68 178 80 187 83 176 175 117 131 188 134 191 151 153})) and http.conn.hostname in $%s) or (not(any(http.conn.content_category[*] in {32 169 177 128})) and http.conn.hostname in $%s) or (http.conn.hostname in $%s and not(any(app.statuses[*] == \"unapproved\")))",
+    cloudflare_zero_trust_list.bypass_inspection.id,
+    cloudflare_zero_trust_list.domain_blocklist.id,
     cloudflare_zero_trust_list.tls_error_hosts.id,
-    cloudflare_zero_trust_list.bypass_inspection.id
+    cloudflare_zero_trust_list.tls_error_hosts.id,
+    cloudflare_zero_trust_list.tls_error_hosts.id
+  )
+}
+
+resource "cloudflare_zero_trust_gateway_policy" "block_domain_blocklist" {
+  account_id  = var.account_id
+  name        = "Block - Domain Blocklist"
+  description = "Block domains in the manually managed blocklist"
+  precedence  = local.block_precedence
+  enabled     = true
+  action      = "block"
+
+  filters = ["http"]
+
+  traffic = format(
+    "any(http.conn.domains[*] in $%s)",
+    cloudflare_zero_trust_list.domain_blocklist.id
   )
 }
 
