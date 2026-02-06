@@ -21,10 +21,9 @@ terraform destroy  # Remove all resources
 
 **Single source file:** `src/index.ts` contains all worker logic.
 
-**Three Gateway Lists:**
+**Two Gateway Lists:**
 - `01-CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames from TLS errors
 - `01-BYPASS-INSPECTION-DOMAINS` - Manually managed domain overrides
-- `01-DOMAIN-BLOCKLIST` - Manually managed domain blocklist (excluded from bypass)
 
 **Data Flow:**
 1. `POST /` receives `zero_trust_network_sessions` logs filtered to `CLIENT_TLS_ERROR` → stores `pending:{SessionID}` in KV
@@ -44,10 +43,9 @@ terraform destroy  # Remove all resources
 - `ACCOUNT_ID` - Cloudflare account ID
 - `LOGPUSH_SECRET` - Shared secret for endpoint authentication
 
-**Gateway Policy Traffic Selector (5 OR groups):**
+**Gateway Policy Traffic Selector (4 OR groups):**
 ```
 Domain in $BYPASS_LIST
-OR Domain not in $DOMAIN_BLOCKLIST
 OR (Security Categories not in {Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware} AND Host in $TLS_ERROR_LIST)
 OR (Content Categories not in {Security Risks, New Domains, Newly Seen Domains, Parked & For Sale} AND Host in $TLS_ERROR_LIST)
 OR (Host in $TLS_ERROR_LIST AND Application Status is not unapproved)
@@ -60,7 +58,7 @@ Uses Cloudflare provider v5 pattern plus `http` and `time` providers.
 **Key resources in `resources.tf`:**
 - `cloudflare_worker` + `cloudflare_worker_version` + `cloudflare_workers_deployment`
 - `cloudflare_workers_kv_namespace` for session correlation
-- Three `cloudflare_zero_trust_list` resources (auto + 2 manual)
+- Two `cloudflare_zero_trust_list` resources (auto + manual)
 - `cloudflare_zero_trust_gateway_policy` with dynamic precedence
 - `time_sleep` - 10s delay after deployment for Logpush validation
 - `data.http.gateway_rules` - Fetches existing rules to calculate unique precedence
