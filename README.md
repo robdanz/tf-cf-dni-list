@@ -10,21 +10,16 @@ This solution:
 1. Correlates Zero Trust session logs with Gateway network logs via Logpush
 2. Automatically extracts the SNI (hostname) from failed TLS sessions
 3. Adds hostnames to a Gateway list used by a "Do Not Inspect" HTTP policy
-4. Excludes unapproved applications from the bypass to maintain security controls
+4. Filters bypass decisions using security categories, content categories, and application approval status
+5. Provides a domain blocklist to explicitly block unwanted domains
 
-## Why Exclude Unapproved Apps?
-
-A "Do Not Inspect" rule in Gateway HTTP policy is effectively an **Allow** action. Once traffic bypasses TLS inspection, Gateway cannot apply further blocking rules to that traffic.
-
-By excluding applications marked as "unapproved" in Cloudflare's application database, we prevent inadvertently allowing traffic to risky or unauthorized applications just because they happen to cause TLS errors.
-
-## Two-List Architecture
+## Three-List Architecture
 
 ### 1. `01-CLIENT_TLS_ERROR_SNI` (Auto-populated)
-Hostnames are automatically added when a `CLIENT_TLS_ERROR` is detected. This list grows organically as users encounter TLS inspection failures.
+Hostnames are automatically added when a `CLIENT_TLS_ERROR` is detected. This list grows organically as users encounter TLS inspection failures. The Do Not Inspect policy applies additional filtering to these hostnames — bypassing only those that are not in dangerous security/content categories and are not unapproved applications.
 
 ### 2. `01-BYPASS-INSPECTION-DOMAINS` (Manually managed)
-A curated list of domains for inspection bypass.
+A curated list of domains for unconditional inspection bypass.
 
 **Recommended workflow:**
 1. Periodically review the auto-populated `01-CLIENT_TLS_ERROR_SNI` list
@@ -33,6 +28,9 @@ A curated list of domains for inspection bypass.
 4. Add a single domain entry (e.g., `example.com`) to `01-BYPASS-INSPECTION-DOMAINS`
 
 This consolidation keeps the lists manageable and reduces policy evaluation overhead.
+
+### 3. `01-DOMAIN-BLOCKLIST` (Manually managed)
+A curated list of domains to explicitly block. Domains on this list are blocked by a dedicated Block policy and excluded from Do Not Inspect bypass. Use this to prevent specific domains from being accessed regardless of other policy conditions.
 
 ## Requirements
 
@@ -86,22 +84,28 @@ terraform apply
 | **KV Namespace** | Session correlation cache (10-minute TTL) |
 | **Gateway List** | `01-CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames |
 | **Gateway List** | `01-BYPASS-INSPECTION-DOMAINS` - Manual domain overrides |
-| **Gateway HTTP Policy** | "Do Not Inspect - TLS Error Hosts" with unapproved app exclusion |
+| **Gateway List** | `01-DOMAIN-BLOCKLIST` - Manual domain blocklist |
+| **Gateway HTTP Policy** | "Do Not Inspect - TLS Error Hosts" - Bypass with category and app filtering |
+| **Gateway HTTP Policy** | "Block - Domain Blocklist" - Block domains on the blocklist |
 | **Logpush Jobs** | Two jobs: `zero_trust_network_sessions` and `gateway_network` |
 
 ## Gateway Policy Logic
 
-The HTTP policy uses the following traffic selector:
+### Do Not Inspect Policy
 
-```
-(http.conn.hostname in $TLS_ERROR_LIST and NOT unapproved)
-OR
-(http.conn.domains in $BYPASS_LIST and NOT unapproved)
-```
+The HTTP "Do Not Inspect" policy uses five OR groups:
 
-This ensures:
-- Hosts in either list bypass TLS inspection
-- Applications marked "unapproved" are never bypassed (maintaining security posture)
+| # | Condition | Purpose |
+|---|-----------|---------|
+| 1 | Domain in `01-BYPASS-INSPECTION-DOMAINS` | Unconditional bypass for curated domains |
+| 2 | Domain not in `01-DOMAIN-BLOCKLIST` | Bypass everything except explicitly blocklisted domains |
+| 3 | Security Categories not in {dangerous categories} AND Host in `01-CLIENT_TLS_ERROR_SNI` | Bypass TLS error hosts unless they are in dangerous security categories (Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware) |
+| 4 | Content Categories not in {risky categories} AND Host in `01-CLIENT_TLS_ERROR_SNI` | Bypass TLS error hosts unless they are in risky content categories (Security Risks, New Domains, Newly Seen Domains, Parked & For Sale Domains) |
+| 5 | Host in `01-CLIENT_TLS_ERROR_SNI` AND Application Status is not unapproved | Bypass TLS error hosts unless the application is unapproved |
+
+### Block Policy
+
+A separate Block policy blocks any domain in `01-DOMAIN-BLOCKLIST`. Since Do Not Inspect is always evaluated before Block in Gateway, blocklisted domains are excluded from bypass first, then actively blocked.
 
 ## Security
 
@@ -124,15 +128,18 @@ Zero Trust Network Sessions          Gateway Network Logs
                        │
                        ▼
               ┌─────────────────┐
-              │  Gateway List   │
-              │  (hostname)     │
+              │  Gateway Lists  │
+              │  TLS Error SNI  │──── auto-populated
+              │  Bypass Domains │──── manual
+              │  Domain Block   │──── manual
               └────────┬────────┘
                        │
-                       ▼
-              ┌─────────────────┐
-              │  HTTP Policy    │
-              │  Do Not Inspect │
-              └─────────────────┘
+               ┌───────┴───────┐
+               ▼               ▼
+      ┌────────────────┐ ┌──────────┐
+      │ Do Not Inspect │ │  Block   │
+      │ (5 OR groups)  │ │ Blocklist│
+      └────────────────┘ └──────────┘
 ```
 
 ## Troubleshooting
@@ -149,7 +156,9 @@ Zero Trust Network Sessions          Gateway Network Logs
 
 ### Policy not matching traffic
 - Confirm the lists contain entries (Zero Trust → Gateway → Lists)
+- For TLS error hosts: check if the hostname falls into a blocked security or content category
 - Verify the application isn't marked as "unapproved"
+- Check that the domain isn't on the `01-DOMAIN-BLOCKLIST`
 - Check policy precedence (lower number = higher priority)
 
 ## Teardown
