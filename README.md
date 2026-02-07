@@ -55,15 +55,22 @@ cp terraform.tfvars.example terraform.tfvars
 Edit `terraform.tfvars`:
 
 ```hcl
-account_id          = "your-cloudflare-account-id"
-cloudflare_email    = "your-cloudflare-email"
-cloudflare_api_key  = "your-global-api-key"      # Global API Key required for Logpush
-workers_subdomain   = "your-workers-subdomain"   # e.g., "myaccount" for myaccount.workers.dev
-enable_logpush      = true
-logpush_secret      = "your-random-secret"       # Generate with: openssl rand -hex 32
+account_id             = "your-cloudflare-account-id"
+cloudflare_api_token   = "your-scoped-api-token"
+workers_subdomain      = "your-workers-subdomain"   # e.g., "myaccount" for myaccount.workers.dev
+enable_logpush         = true
+logpush_secret         = "your-random-secret"        # Generate with: openssl rand -hex 32
 ```
 
-> **Note:** Global API Key is required due to Logpush API permission requirements. Scoped API tokens do not currently support all necessary operations.
+Create a [scoped API token](https://dash.cloudflare.com/profile/api-tokens) with the following **Account-level** permissions:
+
+| Permission | Access |
+|------------|--------|
+| Logs | Edit |
+| Zero Trust | Edit |
+| Zero Trust PII | Read |
+| Workers KV Storage | Edit |
+| Workers Scripts | Edit |
 
 ### 3. Deploy
 
