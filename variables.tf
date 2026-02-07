@@ -3,13 +3,8 @@ variable "account_id" {
   type        = string
 }
 
-variable "cloudflare_email" {
-  description = "Cloudflare account email"
-  type        = string
-}
-
-variable "cloudflare_api_key" {
-  description = "Cloudflare Global API Key"
+variable "cloudflare_api_token" {
+  description = "Cloudflare scoped API Token (Account: Logs Edit, Zero Trust Edit, Zero Trust PII Read, Workers KV Storage Edit, Workers Scripts Edit)"
   type        = string
   sensitive   = true
 }

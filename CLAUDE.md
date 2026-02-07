@@ -37,11 +37,17 @@ terraform destroy  # Remove all resources
 
 **Environment Bindings (configured by Terraform):**
 - `SESSION_CACHE` - KV namespace for session correlation
-- `API_KEY` - Cloudflare Global API Key
-- `API_EMAIL` - Cloudflare account email
+- `API_TOKEN` - Cloudflare scoped API Token
 - `LIST_ID` - Gateway list UUID for auto-populated hostnames
 - `ACCOUNT_ID` - Cloudflare account ID
 - `LOGPUSH_SECRET` - Shared secret for endpoint authentication
+
+**API Token Required Scopes (all Account-level):**
+- Logs: Edit
+- Zero Trust: Edit
+- Zero Trust PII: Read
+- Workers KV Storage: Edit
+- Workers Scripts: Edit
 
 **Gateway Policy Traffic Selector (4 OR groups):**
 ```
@@ -85,12 +91,11 @@ Uses Cloudflare provider v5 pattern plus `http` and `time` providers.
 
 `terraform.tfvars` (not committed - contains secrets):
 ```hcl
-account_id          = "your-cloudflare-account-id"
-cloudflare_email    = "your-cloudflare-email"
-cloudflare_api_key  = "your-global-api-key"
-workers_subdomain   = "your-workers-subdomain"
-enable_logpush      = true
-logpush_secret      = "generate-with-openssl-rand-hex-32"
+account_id             = "your-cloudflare-account-id"
+cloudflare_api_token   = "your-scoped-api-token"
+workers_subdomain      = "your-workers-subdomain"
+enable_logpush         = true
+logpush_secret         = "generate-with-openssl-rand-hex-32"
 ```
 
 ## Testing

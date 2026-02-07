@@ -77,13 +77,8 @@ resource "cloudflare_worker_version" "dni_list" {
     },
     {
       type = "secret_text"
-      name = "API_KEY"
-      text = var.cloudflare_api_key
-    },
-    {
-      type = "plain_text"
-      name = "API_EMAIL"
-      text = var.cloudflare_email
+      name = "API_TOKEN"
+      text = var.cloudflare_api_token
     },
     {
       type = "secret_text"
@@ -118,8 +113,7 @@ data "http" "gateway_rules" {
   url = "https://api.cloudflare.com/client/v4/accounts/${var.account_id}/gateway/rules"
 
   request_headers = {
-    X-Auth-Email = var.cloudflare_email
-    X-Auth-Key   = var.cloudflare_api_key
+    Authorization = "Bearer ${var.cloudflare_api_token}"
   }
 }
 
