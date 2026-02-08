@@ -225,12 +225,10 @@ resource "cloudflare_zero_trust_gateway_policy" "net_block_blocklist" {
 }
 
 # -----------------------------------------------------------------------------
-# Logpush Jobs (requires Logpush entitlement - Enterprise or Zero Trust add-on)
-# Set enable_logpush = true in terraform.tfvars if your account has access
+# Logpush Jobs
 # -----------------------------------------------------------------------------
 
 resource "cloudflare_logpush_job" "zero_trust_sessions" {
-  count            = var.enable_logpush ? 1 : 0
   account_id       = var.account_id
   name             = "tf-cf-dni-list-zero-trust"
   enabled          = true
@@ -252,7 +250,6 @@ resource "cloudflare_logpush_job" "zero_trust_sessions" {
 }
 
 resource "cloudflare_logpush_job" "gateway_network" {
-  count            = var.enable_logpush ? 1 : 0
   account_id       = var.account_id
   name             = "tf-cf-dni-list-gateway"
   enabled          = true

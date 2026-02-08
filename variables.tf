@@ -14,12 +14,6 @@ variable "workers_subdomain" {
   type        = string
 }
 
-variable "enable_logpush" {
-  description = "Enable Logpush jobs (requires Enterprise or Zero Trust add-on with Logpush entitlement)"
-  type        = bool
-  default     = false
-}
-
 variable "logpush_secret" {
   description = "Shared secret for Logpush authentication (generate with: openssl rand -hex 32)"
   type        = string

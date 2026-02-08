@@ -107,7 +107,6 @@ Uses Cloudflare provider v5 pattern plus `http` and `time` providers.
 account_id             = "your-cloudflare-account-id"
 cloudflare_api_token   = "your-scoped-api-token"
 workers_subdomain      = "your-workers-subdomain"
-enable_logpush         = true
 logpush_secret         = "generate-with-openssl-rand-hex-32"
 ```
 

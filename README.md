@@ -64,7 +64,6 @@ Edit `terraform.tfvars`:
 account_id             = "your-cloudflare-account-id"
 cloudflare_api_token   = "your-scoped-api-token"
 workers_subdomain      = "your-workers-subdomain"   # e.g., "myaccount" for myaccount.workers.dev
-enable_logpush         = true
 logpush_secret         = "your-random-secret"        # Generate with: openssl rand -hex 32
 ```
 
