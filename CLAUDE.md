@@ -102,7 +102,7 @@ Uses Cloudflare provider v5 pattern plus `http` and `time` providers.
 - Gzip detection via Content-Encoding header OR magic bytes (0x1f 0x8b)
 - Hostname validation: RFC-compliant, max 253 chars, alphanumeric + hyphen + dots
 - Partial success returns 207 status with `errors` array in response
-- "Do Not Inspect" rules use pre-TLS selectors (`http.conn.hostname`, `http.conn.domains`, `http.conn.security_category`, `http.conn.content_category`, `app.statuses`)
+- **Gateway selector constraints by action:** Pre-TLS selectors (`http.conn.*`) are ONLY valid for the `off` (Do Not Inspect) action. Block/allow actions require post-TLS selectors (`http.request.*`). For example, use `http.conn.domains` in DNI policies but `http.request.domains` in block policies. The API returns error 2091 if you use the wrong selector type for an action.
 - Logpush jobs depend on `time_sleep` to allow worker propagation before validation
 
 ## Configuration
