@@ -21,9 +21,10 @@ terraform destroy  # Remove all resources
 
 **Single source file:** `src/index.ts` contains all worker logic.
 
-**Two Gateway Lists:**
+**Three Gateway Lists:**
 - `01-CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames from TLS errors
 - `01-BYPASS-INSPECTION-DOMAINS` - Manually managed domain overrides
+- `01-BLOCK-DOMAIN-LIST` - Manually managed domain blocklist (blocked at DNS, Network, and excluded from DNI bypass)
 
 **Data Flow:**
 1. `POST /` receives `zero_trust_network_sessions` logs filtered to `CLIENT_TLS_ERROR` → stores `pending:{SessionID}` in KV
@@ -33,7 +34,7 @@ terraform destroy  # Remove all resources
 **KV Keys:**
 - `pending:{SessionID}` - Zero Trust arrived first, waiting for Gateway (value: "1")
 - `sni:{SessionID}` - Gateway arrived first, waiting for Zero Trust (value: hostname)
-- Both expire after 10 minutes (PENDING_TTL_SECONDS)
+- Both expire after 5 minutes (PENDING_TTL_SECONDS)
 
 **Environment Bindings (configured by Terraform):**
 - `SESSION_CACHE` - KV namespace for session correlation
@@ -49,12 +50,24 @@ terraform destroy  # Remove all resources
 - Workers KV Storage: Edit
 - Workers Scripts: Edit
 
-**Gateway Policy Traffic Selector (4 OR groups):**
+**Gateway Policies (3 managed policies, evaluated in order: DNS → Network → HTTP):**
+
+*DNS Block - Domain Blocklist (highest priority DNS):*
+```
+Domain in $BLOCK_LIST → Block
+```
+
+*Network Block - Domain Blocklist (highest priority Network):*
+```
+SNI Domain in $BLOCK_LIST → Block
+```
+
+*Do Not Inspect - TLS Error Hosts (HTTP, 4 OR groups):*
 ```
 Domain in $BYPASS_LIST
 OR (Security Categories not in {Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware} AND Host in $TLS_ERROR_LIST)
 OR (Content Categories not in {Security Risks, New Domains, Newly Seen Domains, Parked & For Sale} AND Host in $TLS_ERROR_LIST)
-OR (Host in $TLS_ERROR_LIST AND Application Status is not unapproved)
+OR (Host in $TLS_ERROR_LIST AND Application Status is not unapproved AND Host not in $BLOCK_LIST)
 ```
 
 **Security Category IDs (hardcoded in traffic expression):**
@@ -70,12 +83,12 @@ Uses Cloudflare provider v5 pattern plus `http` and `time` providers.
 **Key resources in `resources.tf`:**
 - `cloudflare_worker` + `cloudflare_worker_version` + `cloudflare_workers_deployment`
 - `cloudflare_workers_kv_namespace` for session correlation
-- Two `cloudflare_zero_trust_list` resources (auto + manual)
-- `cloudflare_zero_trust_gateway_policy` (Do Not Inspect) with dynamic precedence
+- Three `cloudflare_zero_trust_list` resources (auto + manual bypass + manual blocklist)
+- Three `cloudflare_zero_trust_gateway_policy` resources (DNS Block, Network Block, Do Not Inspect) with dynamic precedence
 - `time_sleep` - 10s delay after deployment for Logpush validation
 - `data.http.gateway_rules` - Fetches existing rules to calculate unique precedence
 
-**Precedence calculation:** Queries existing Gateway rules via API and finds first available slot starting from 0 to ensure highest priority.
+**Precedence calculation:** Queries existing Gateway rules via API and finds first three available consecutive slots starting from 0 (DNS Block → Network Block → DNI).
 
 ## Key Implementation Details
 

@@ -10,12 +10,12 @@
  *   If pending:{SessionID} exists (Zero Trust arrived first) → add SNI to list, delete pending
  *   Otherwise → create sni:{SessionID} with the hostname
  *
- * Both key types expire after 10 minutes. Order of arrival doesn't matter.
+ * Both key types expire after 5 minutes. Order of arrival doesn't matter.
  */
 
 const CLIENT_TLS_ERROR = "CLIENT_TLS_ERROR";
 // Pending keys expire quickly; zero_trust and gateway_network batches are close in time. Orphans clear without listing.
-const PENDING_TTL_SECONDS = 600; // 10 minutes
+const PENDING_TTL_SECONDS = 300; // 5 minutes
 
 // Zero Trust network session log (dataset: zero_trust_network_sessions)
 interface ZeroTrustSessionLog {
