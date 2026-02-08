@@ -65,8 +65,8 @@ SNI Domain in $BLOCK_LIST → Block
 *Do Not Inspect - TLS Error Hosts (HTTP, 4 OR groups):*
 ```
 Domain in $BYPASS_LIST
-OR (Security Categories not in {Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware} AND Host in $TLS_ERROR_LIST)
-OR (Content Categories not in {Security Risks, New Domains, Newly Seen Domains, Parked & For Sale} AND Host in $TLS_ERROR_LIST)
+OR (Host in $TLS_ERROR_LIST AND Security Categories not in {Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware})
+OR (Host in $TLS_ERROR_LIST AND Content Categories not in {Security Risks, New Domains, Newly Seen Domains, Parked & For Sale})
 OR (Host in $TLS_ERROR_LIST AND Application Status is not unapproved AND Host not in $BLOCK_LIST)
 ```
 

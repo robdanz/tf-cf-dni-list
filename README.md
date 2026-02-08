@@ -95,7 +95,7 @@ terraform apply
 | **Gateway List** | `01-BYPASS-INSPECTION-DOMAINS` - Manual domain overrides |
 | **Gateway List** | `01-BLOCK-DOMAIN-LIST` - Manual domain blocklist |
 | **Gateway DNS Policy** | "Block DNS - Domain Blocklist" - Block DNS queries for blocklist domains |
-| **Gateway Network Policy** | "Block Network - Domain Blocklist" - Block SNI connections for blocklist domains |
+| **Gateway Network Policy** | "Block Network - SNI Domain Blocklist" - Block SNI connections for blocklist domains |
 | **Gateway HTTP Policy** | "Do Not Inspect - TLS Error Hosts" - Bypass with category, app, and blocklist filtering |
 | **Logpush Jobs** | Two jobs: `zero_trust_network_sessions` and `gateway_network` |
 
@@ -118,8 +118,8 @@ Policies are evaluated in order: DNS → Network → HTTP. All three block/bypas
 | # | Condition | Purpose |
 |---|-----------|---------|
 | 1 | Domain in `01-BYPASS-INSPECTION-DOMAINS` | Unconditional bypass for curated domains |
-| 2 | Security Categories not in {dangerous categories} AND Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` | Bypass TLS error hosts unless they are in dangerous security categories (Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware) |
-| 3 | Content Categories not in {risky categories} AND Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` | Bypass TLS error hosts unless they are in risky content categories (Security Risks, New Domains, Newly Seen Domains, Parked & For Sale Domains) |
+| 2 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Security Categories not in {dangerous categories} | Bypass TLS error hosts unless they are in dangerous security categories (Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware) |
+| 3 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Content Categories not in {risky categories} | Bypass TLS error hosts unless they are in risky content categories (Security Risks, New Domains, Newly Seen Domains, Parked & For Sale Domains) |
 | 4 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Application Status is not unapproved AND Host not in `01-BLOCK-DOMAIN-LIST` | Bypass TLS error hosts unless the application is unapproved or the host is in the block list |
 
 ## Security
