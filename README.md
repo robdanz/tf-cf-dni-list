@@ -96,11 +96,12 @@ terraform apply
 | **Gateway DNS Policy** | "Block DNS - Domain Blocklist" - Block DNS queries for blocklist domains |
 | **Gateway Network Policy** | "Block Network - SNI Domain Blocklist" - Block SNI connections for blocklist domains |
 | **Gateway HTTP Policy** | "Do Not Inspect - TLS Error Hosts" - Bypass with category, app, and blocklist filtering |
+| **Gateway HTTP Policy** | "Block HTTP - Domain Blocklist" - Block HTTP connections for blocklist domains |
 | **Logpush Jobs** | Two jobs: `zero_trust_network_sessions` and `gateway_network` |
 
 ## Gateway Policy Logic
 
-Policies are evaluated in order: DNS → Network → HTTP. All three block/bypass policies are deployed at the highest available priority within their respective layers.
+Policies are evaluated in order: DNS → Network → HTTP. All four policies are deployed at the highest available priority slots.
 
 ### DNS Block Policy
 | Condition | Action |
@@ -120,6 +121,13 @@ Policies are evaluated in order: DNS → Network → HTTP. All three block/bypas
 | 2 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Security Categories not in {dangerous categories} | Bypass TLS error hosts unless they are in dangerous security categories (Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware) |
 | 3 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Content Categories not in {risky categories} | Bypass TLS error hosts unless they are in risky content categories (Security Risks, New Domains, Newly Seen Domains, Parked & For Sale Domains) |
 | 4 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Application Status is not unapproved AND Host not in `01-BLOCK-DOMAIN-LIST` | Bypass TLS error hosts unless the application is unapproved or the host is in the block list |
+
+### HTTP Block Policy
+| Condition | Action |
+|-----------|--------|
+| Domain in `01-BLOCK-DOMAIN-LIST` | Block |
+
+This policy has lower priority than Do Not Inspect, ensuring DNI rules are evaluated first.
 
 ## Security
 

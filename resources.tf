@@ -129,6 +129,7 @@ locals {
   # Managed policy names to exclude from precedence calculations
   managed_policy_names = toset([
     "Do Not Inspect - TLS Error Hosts",
+    "Block HTTP - Domain Blocklist",
     "Block DNS - Domain Blocklist",
     "Block Network - SNI Domain Blocklist",
   ])
@@ -140,7 +141,7 @@ locals {
   ])
   # Find the minimum precedence currently in use
   min_precedence = length(local.all_precedences) > 0 ? min(local.all_precedences...) : 1000
-  # Find first three available precedence slots starting from 0
+  # Find first four available precedence slots starting from 0
   dns_block_precedence = (
     !contains(local.all_precedences, 0) ? 0 :
     !contains(local.all_precedences, 1) ? 1 :
@@ -162,6 +163,12 @@ locals {
     !contains(local.all_precedences, local.net_block_precedence + 3) ? local.net_block_precedence + 3 :
     local.net_block_precedence + 100
   )
+  http_block_precedence = (
+    !contains(local.all_precedences, local.dni_precedence + 1) ? local.dni_precedence + 1 :
+    !contains(local.all_precedences, local.dni_precedence + 2) ? local.dni_precedence + 2 :
+    !contains(local.all_precedences, local.dni_precedence + 3) ? local.dni_precedence + 3 :
+    local.dni_precedence + 100
+  )
 }
 
 resource "cloudflare_zero_trust_gateway_policy" "dni_tls_errors" {
@@ -180,6 +187,26 @@ resource "cloudflare_zero_trust_gateway_policy" "dni_tls_errors" {
     cloudflare_zero_trust_list.tls_error_hosts.id,
     cloudflare_zero_trust_list.tls_error_hosts.id,
     cloudflare_zero_trust_list.tls_error_hosts.id,
+    cloudflare_zero_trust_list.domain_blocklist.id
+  )
+}
+
+# -----------------------------------------------------------------------------
+# Gateway HTTP Policy - Block domains in blocklist
+# -----------------------------------------------------------------------------
+
+resource "cloudflare_zero_trust_gateway_policy" "http_block_blocklist" {
+  account_id  = var.account_id
+  name        = "Block HTTP - Domain Blocklist"
+  description = "Block HTTP connections for domains in the manually managed blocklist"
+  precedence  = local.http_block_precedence
+  enabled     = true
+  action      = "block"
+
+  filters = ["http"]
+
+  traffic = format(
+    "any(http.conn.domains[*] in $%s)",
     cloudflare_zero_trust_list.domain_blocklist.id
   )
 }

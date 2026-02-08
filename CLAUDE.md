@@ -50,7 +50,7 @@ terraform destroy  # Remove all resources
 - Workers KV Storage: Edit
 - Workers Scripts: Edit
 
-**Gateway Policies (3 managed policies, evaluated in order: DNS → Network → HTTP):**
+**Gateway Policies (4 managed policies, evaluated in order: DNS → Network → HTTP):**
 
 *DNS Block - Domain Blocklist (highest priority DNS):*
 ```
@@ -70,6 +70,11 @@ OR (Host in $TLS_ERROR_LIST AND Content Categories not in {Security Risks, New D
 OR (Host in $TLS_ERROR_LIST AND Application Status is not unapproved AND Host not in $BLOCK_LIST)
 ```
 
+*Block HTTP - Domain Blocklist (lower priority than DNI):*
+```
+Domain in $BLOCK_LIST → Block
+```
+
 **Security Category IDs (hardcoded in traffic expression):**
 68=Anonymizer, 178=Brand Embedding, 80=C2/Botnet, 187=Compromised Domain, 83=Cryptomining, 176=DGA Domains, 175=DNS Tunneling, 117=Malware, 131=Phishing, 188=PUP, 134=Private IP, 191=Scam, 151=Spam, 153=Spyware
 
@@ -84,11 +89,11 @@ Uses Cloudflare provider v5 pattern plus `http` and `time` providers.
 - `cloudflare_worker` + `cloudflare_worker_version` + `cloudflare_workers_deployment`
 - `cloudflare_workers_kv_namespace` for session correlation
 - Three `cloudflare_zero_trust_list` resources (auto + manual bypass + manual blocklist)
-- Three `cloudflare_zero_trust_gateway_policy` resources (DNS Block, Network Block, Do Not Inspect) with dynamic precedence
+- Four `cloudflare_zero_trust_gateway_policy` resources (DNS Block, Network Block, Do Not Inspect, HTTP Block) with dynamic precedence
 - `time_sleep` - 10s delay after deployment for Logpush validation
 - `data.http.gateway_rules` - Fetches existing rules to calculate unique precedence
 
-**Precedence calculation:** Queries existing Gateway rules via API and finds first three available consecutive slots starting from 0 (DNS Block → Network Block → DNI).
+**Precedence calculation:** Queries existing Gateway rules via API and finds first four available consecutive slots starting from 0 (DNS Block → Network Block → DNI → HTTP Block).
 
 ## Key Implementation Details
 
