@@ -206,7 +206,7 @@ resource "cloudflare_zero_trust_gateway_policy" "http_block_blocklist" {
   filters = ["http"]
 
   traffic = format(
-    "any(http.conn.domains[*] in $%s)",
+    "any(http.request.domains[*] in $%s)",
     cloudflare_zero_trust_list.domain_blocklist.id
   )
 }
