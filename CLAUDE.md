@@ -22,7 +22,7 @@ terraform destroy  # Remove all resources
 **Single source file:** `src/index.ts` contains all worker logic.
 
 **Three Gateway Lists:**
-- `01-CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames from TLS errors
+- `01-BYPASS_CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames from TLS errors
 - `01-BYPASS-INSPECTION-DOMAINS` - Manually managed domain overrides
 - `01-BLOCK-DOMAIN-LIST` - Manually managed domain blocklist (blocked at DNS, Network, and excluded from DNI bypass)
 

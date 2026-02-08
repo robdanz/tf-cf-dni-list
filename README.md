@@ -14,14 +14,14 @@ This solution:
 
 ## Three-List Architecture
 
-### 1. `01-CLIENT_TLS_ERROR_SNI` (Auto-populated)
+### 1. `01-BYPASS_CLIENT_TLS_ERROR_SNI` (Auto-populated)
 Hostnames are automatically added when a `CLIENT_TLS_ERROR` is detected. This list grows organically as users encounter TLS inspection failures. The Do Not Inspect policy applies additional filtering to these hostnames — bypassing only those that are not in dangerous security/content categories, are not unapproved applications, and are not in the block list.
 
 ### 2. `01-BYPASS-INSPECTION-DOMAINS` (Manually managed)
 A curated list of domains for unconditional inspection bypass.
 
 **Recommended workflow:**
-1. Periodically review the auto-populated `01-CLIENT_TLS_ERROR_SNI` list
+1. Periodically review the auto-populated `01-BYPASS_CLIENT_TLS_ERROR_SNI` list
 2. Identify patterns (e.g., multiple hostnames like `api1.example.com`, `api2.example.com`)
 3. Remove individual hostnames from the auto-populated list
 4. Add a single domain entry (e.g., `example.com`) to `01-BYPASS-INSPECTION-DOMAINS`
@@ -91,7 +91,7 @@ terraform apply
 |----------|-------------|
 | **Worker** | `tf-cf-dni-list` - Logpush HTTP destination endpoint |
 | **KV Namespace** | Session correlation cache (5-minute TTL) |
-| **Gateway List** | `01-CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames |
+| **Gateway List** | `01-BYPASS_CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames |
 | **Gateway List** | `01-BYPASS-INSPECTION-DOMAINS` - Manual domain overrides |
 | **Gateway List** | `01-BLOCK-DOMAIN-LIST` - Manual domain blocklist |
 | **Gateway DNS Policy** | "Block DNS - Domain Blocklist" - Block DNS queries for blocklist domains |
@@ -118,9 +118,9 @@ Policies are evaluated in order: DNS → Network → HTTP. All three block/bypas
 | # | Condition | Purpose |
 |---|-----------|---------|
 | 1 | Domain in `01-BYPASS-INSPECTION-DOMAINS` | Unconditional bypass for curated domains |
-| 2 | Security Categories not in {dangerous categories} AND Host in `01-CLIENT_TLS_ERROR_SNI` | Bypass TLS error hosts unless they are in dangerous security categories (Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware) |
-| 3 | Content Categories not in {risky categories} AND Host in `01-CLIENT_TLS_ERROR_SNI` | Bypass TLS error hosts unless they are in risky content categories (Security Risks, New Domains, Newly Seen Domains, Parked & For Sale Domains) |
-| 4 | Host in `01-CLIENT_TLS_ERROR_SNI` AND Application Status is not unapproved AND Host not in `01-BLOCK-DOMAIN-LIST` | Bypass TLS error hosts unless the application is unapproved or the host is in the block list |
+| 2 | Security Categories not in {dangerous categories} AND Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` | Bypass TLS error hosts unless they are in dangerous security categories (Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware) |
+| 3 | Content Categories not in {risky categories} AND Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` | Bypass TLS error hosts unless they are in risky content categories (Security Risks, New Domains, Newly Seen Domains, Parked & For Sale Domains) |
+| 4 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Application Status is not unapproved AND Host not in `01-BLOCK-DOMAIN-LIST` | Bypass TLS error hosts unless the application is unapproved or the host is in the block list |
 
 ## Security
 

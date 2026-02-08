@@ -13,7 +13,7 @@ resource "cloudflare_workers_kv_namespace" "session_cache" {
 
 resource "cloudflare_zero_trust_list" "tls_error_hosts" {
   account_id  = var.account_id
-  name        = "01-CLIENT_TLS_ERROR_SNI"
+  name        = "01-BYPASS_CLIENT_TLS_ERROR_SNI"
   description = "Hostnames with TLS inspection errors - auto-populated by tf-cf-dni-list worker"
   type        = "DOMAIN"
 }
