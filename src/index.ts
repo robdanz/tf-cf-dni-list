@@ -54,7 +54,7 @@ export default {
   ): Promise<Response> {
     const url = new URL(request.url);
 
-    if (url.pathname === "/" && request.method === "GET") {
+    if (request.method === "GET") {
       return new Response(
         "cf-dni-list Logpush endpoint\n  POST / = zero_trust_network_sessions\n  POST /gateway = gateway_network\n",
         { headers: { "Content-Type": "text/plain" } }
