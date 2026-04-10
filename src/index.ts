@@ -1,30 +1,17 @@
 /**
  * Logpush endpoint: receives Zero Trust network sessions (CLIENT_TLS_ERROR)
- * and Gateway network logs (SessionID + SNI). Bidirectional correlation via KV:
+ * and adds the SNI directly to the Gateway list. The SNI field is now included
+ * in the zero_trust_network_sessions dataset, so no KV correlation is needed.
  *
- * - POST /         — zero_trust_network_sessions
- *   If sni:{SessionID} exists (Gateway arrived first) → add SNI to list, delete sni key
- *   Otherwise → create pending:{SessionID}
- *
- * - POST /gateway  — gateway_network
- *   If pending:{SessionID} exists (Zero Trust arrived first) → add SNI to list, delete pending
- *   Otherwise → create sni:{SessionID} with the hostname
- *
- * Both key types expire after 5 minutes. Order of arrival doesn't matter.
+ * - POST / — zero_trust_network_sessions (fields: SessionID, ConnectionCloseReason, SNI)
+ * - GET /  — health check
  */
 
 const CLIENT_TLS_ERROR = "CLIENT_TLS_ERROR";
-// Pending keys expire quickly; zero_trust and gateway_network batches are close in time. Orphans clear without listing.
-const PENDING_TTL_SECONDS = 300; // 5 minutes
 
 // Zero Trust network session log (dataset: zero_trust_network_sessions)
 interface ZeroTrustSessionLog {
   ConnectionCloseReason?: string;
-  SessionID?: string;
-}
-
-// Gateway network log (dataset: gateway_network)
-interface GatewayNetworkLog {
   SessionID?: string;
   SNI?: string;
 }
@@ -33,7 +20,6 @@ interface Env {
   API_TOKEN: string;
   LIST_ID: string;
   ACCOUNT_ID: string;
-  SESSION_CACHE: KVNamespace;
   LOGPUSH_SECRET: string;
 }
 
@@ -52,16 +38,14 @@ export default {
     env: Env,
     _ctx: ExecutionContext
   ): Promise<Response> {
-    const url = new URL(request.url);
-
     if (request.method === "GET") {
       return new Response(
-        "cf-dni-list Logpush endpoint\n  POST / = zero_trust_network_sessions\n  POST /gateway = gateway_network\n",
+        "cf-dni-list Logpush endpoint\n  POST / = zero_trust_network_sessions\n",
         { headers: { "Content-Type": "text/plain" } }
       );
     }
 
-    if (url.pathname === "/" && request.method === "POST") {
+    if (request.method === "POST") {
       const authError = validateSecret(request, env);
       if (authError) return authError;
       try {
@@ -70,23 +54,6 @@ export default {
         const msg = e instanceof Error ? e.message : String(e);
         const stack = e instanceof Error ? e.stack : undefined;
         console.error("handleZeroTrustSessions threw", msg, stack);
-        return new Response(
-          JSON.stringify({ ok: false, error: msg }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        );
-      }
-    }
-
-    if (url.pathname === "/gateway" && request.method === "POST") {
-      const authError = validateSecret(request, env);
-      if (authError) return authError;
-
-      try {
-        return await handleGatewayNetwork(request, env);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        const stack = e instanceof Error ? e.stack : undefined;
-        console.error("handleGatewayNetwork threw", msg, stack);
         return new Response(
           JSON.stringify({ ok: false, error: msg }),
           { status: 200, headers: { "Content-Type": "application/json" } }
@@ -135,18 +102,13 @@ function parseNDJSON(body: string): Record<string, unknown>[] {
 }
 
 /**
- * Zero Trust: CLIENT_TLS_ERROR → SessionID. We don't have SNI here (ResolvedFQDN is usually blank).
- * Check if gateway_network already stored an SNI for this SessionID; if so, add to list immediately.
- * Otherwise write pending:SessionID so /gateway can resolve when it sees that SessionID + SNI.
+ * Zero Trust: CLIENT_TLS_ERROR records now include SNI directly.
+ * Add each valid SNI to the Gateway list immediately.
  */
 async function handleZeroTrustSessions(
   request: Request,
   env: Env
 ): Promise<Response> {
-  if (!env.SESSION_CACHE) {
-    throw new Error("SESSION_CACHE KV binding is missing");
-  }
-
   let body: string;
   try {
     body = await readBody(request);
@@ -156,149 +118,20 @@ async function handleZeroTrustSessions(
   }
 
   const records = parseNDJSON(body) as ZeroTrustSessionLog[];
-  const sessionIds: string[] = [];
+  const toAdd: string[] = [];
 
   for (const record of records) {
     if (record.ConnectionCloseReason !== CLIENT_TLS_ERROR) continue;
-    const sid = record.SessionID?.trim();
-    if (sid) sessionIds.push(sid);
-  }
-
-  const uniqueSessionIds = [...new Set(sessionIds)];
-  const pending: string[] = [];
-  const matched: string[] = [];
-  const added: string[] = [];
-  const skipped: string[] = [];
-  const errors: string[] = [];
-
-  // Fetch existing hostnames once if we might need to add to list
-  let existing: Set<string> | null = null;
-
-  try {
-    for (const sessionId of uniqueSessionIds) {
-      // Check if Gateway already stored an SNI for this session
-      const storedSni = await env.SESSION_CACHE.get(sniKey(sessionId));
-
-      if (storedSni) {
-        // Gateway arrived first - add SNI to list now
-        matched.push(sessionId);
-        await env.SESSION_CACHE.delete(sniKey(sessionId));
-
-        if (!isValidHostname(storedSni)) {
-          errors.push(`${sessionId}: invalid hostname ${storedSni}`);
-          continue;
-        }
-
-        // Lazy-load existing hostnames
-        if (existing === null) {
-          existing = await getListHostnames(env);
-        }
-
-        if (existing.has(storedSni)) {
-          skipped.push(storedSni);
-          continue;
-        }
-
-        try {
-          await appendToList(env, storedSni);
-          added.push(storedSni);
-          existing.add(storedSni);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          errors.push(`${sessionId} (${storedSni}): ${msg}`);
-        }
-      } else {
-        // Gateway hasn't arrived yet - store pending marker
-        await env.SESSION_CACHE.put(pendingKey(sessionId), "1", {
-          expirationTtl: PENDING_TTL_SECONDS,
-        });
-        pending.push(sessionId);
-      }
-    }
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error("KV or API operation failed", msg);
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        error: msg,
-        pending_session_ids: pending.length,
-        matched_session_ids: matched.length,
-        added_hostnames: added,
-      }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
-  const status = errors.length === 0 ? 200 : 207;
-  return new Response(
-    JSON.stringify({
-      ok: errors.length === 0,
-      pending_session_ids: pending.length,
-      matched_session_ids: matched.length,
-      added_hostnames: added,
-      skipped_existing: skipped.length,
-      errors: errors.length ? errors : undefined,
-    }),
-    { status, headers: { "Content-Type": "application/json" } }
-  );
-}
-
-/**
- * Gateway network: if SessionID is pending (CLIENT_TLS_ERROR was seen), add SNI to list.
- * If not pending, store SNI in KV so Zero Trust handler can add it later.
- */
-async function handleGatewayNetwork(
-  request: Request,
-  env: Env
-): Promise<Response> {
-  if (!env.SESSION_CACHE) {
-    throw new Error("SESSION_CACHE KV binding is missing");
-  }
-
-  let body: string;
-  try {
-    body = await readBody(request);
-  } catch (e) {
-    console.error("read body failed", e);
-    return new Response("Bad Request", { status: 400 });
-  }
-
-  const records = parseNDJSON(body) as GatewayNetworkLog[];
-  const toAdd: Array<{ sessionId: string; sni: string }> = [];
-  const storedForLater: string[] = [];
-
-  for (const record of records) {
-    const sessionId = record.SessionID?.trim();
     const sni = record.SNI?.trim();
-    if (!sessionId || !sni) continue;
-    if (!isValidHostname(sni)) continue;
-
-    const wasPending = await env.SESSION_CACHE.get(pendingKey(sessionId));
-
-    if (wasPending) {
-      // Zero Trust arrived first - add to list now
-      toAdd.push({ sessionId, sni });
-      await env.SESSION_CACHE.delete(pendingKey(sessionId));
-    } else {
-      // Zero Trust hasn't arrived yet - store SNI for later
-      await env.SESSION_CACHE.put(sniKey(sessionId), sni, {
-        expirationTtl: PENDING_TTL_SECONDS,
-      });
-      storedForLater.push(sessionId);
-    }
+    if (!sni || !isValidHostname(sni)) continue;
+    toAdd.push(sni);
   }
 
-  // No pending sessions matched — return 200 without calling Gateway API
-  if (toAdd.length === 0) {
+  const unique = [...new Set(toAdd)];
+
+  if (unique.length === 0) {
     return new Response(
-      JSON.stringify({
-        ok: true,
-        added: 0,
-        added_hostnames: [],
-        skipped_existing: 0,
-        stored_for_later: storedForLater.length,
-      }),
+      JSON.stringify({ ok: true, added_hostnames: [], skipped_existing: 0 }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -310,22 +143,16 @@ async function handleGatewayNetwork(
     const msg = e instanceof Error ? e.message : String(e);
     console.error("getListHostnames failed", msg);
     return new Response(
-      JSON.stringify({
-        ok: false,
-        error: msg,
-        added: 0,
-        added_hostnames: [],
-        stored_for_later: storedForLater.length,
-      }),
+      JSON.stringify({ ok: false, error: msg }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   }
 
   const added: string[] = [];
-  const errors: string[] = [];
   const skipped: string[] = [];
+  const errors: string[] = [];
 
-  for (const { sessionId, sni } of toAdd) {
+  for (const sni of unique) {
     if (existing.has(sni)) {
       skipped.push(sni);
       continue;
@@ -336,7 +163,7 @@ async function handleGatewayNetwork(
       existing.add(sni);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      errors.push(`${sessionId} (${sni}): ${msg}`);
+      errors.push(`${sni}: ${msg}`);
     }
   }
 
@@ -344,22 +171,12 @@ async function handleGatewayNetwork(
   return new Response(
     JSON.stringify({
       ok: errors.length === 0,
-      added: added.length,
       added_hostnames: added,
       skipped_existing: skipped.length,
-      stored_for_later: storedForLater.length,
       errors: errors.length ? errors : undefined,
     }),
     { status, headers: { "Content-Type": "application/json" } }
   );
-}
-
-function pendingKey(sessionId: string): string {
-  return `pending:${sessionId}`;
-}
-
-function sniKey(sessionId: string): string {
-  return `sni:${sessionId}`;
 }
 
 function isValidHostname(s: string): boolean {

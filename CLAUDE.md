@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Cloudflare Worker that acts as a Logpush HTTP destination for Zero Trust network session logs. It correlates two log streams via KV to identify hostnames causing TLS inspection failures and adds them to a Gateway list for automatic "Do Not Inspect" policy application. The policy filters TLS error hosts by security categories, content categories, and application approval status to prevent bypassing inspection for dangerous or unapproved destinations.
+Cloudflare Worker that acts as a Logpush HTTP destination for Zero Trust network session logs. It reads the SNI field directly from `CLIENT_TLS_ERROR` records and adds hostnames to a Gateway list for automatic "Do Not Inspect" policy application. The policy filters TLS error hosts by security categories, content categories, and application approval status to prevent bypassing inspection for dangerous or unapproved destinations.
 
 ## Commands
 
@@ -27,17 +27,11 @@ terraform destroy  # Remove all resources
 - `01-BLOCK-DOMAIN-LIST` - Manually managed domain blocklist (blocked at DNS, Network, and excluded from DNI bypass)
 
 **Data Flow:**
-1. `POST /` receives `zero_trust_network_sessions` logs filtered to `CLIENT_TLS_ERROR` → stores `pending:{SessionID}` in KV
-2. `POST /gateway` receives `gateway_network` logs with SNI → if matching pending SessionID exists, adds SNI to Gateway list
-3. Bidirectional correlation: either log can arrive first; the second completes the match
-
-**KV Keys:**
-- `pending:{SessionID}` - Zero Trust arrived first, waiting for Gateway (value: "1")
-- `sni:{SessionID}` - Gateway arrived first, waiting for Zero Trust (value: hostname)
-- Both expire after 5 minutes (PENDING_TTL_SECONDS)
+1. `POST /` receives `zero_trust_network_sessions` logs filtered to `CLIENT_TLS_ERROR`
+2. Each record includes `SNI` directly — valid hostnames are appended to the Gateway list immediately
+3. No KV correlation needed; the worker is stateless
 
 **Environment Bindings (configured by Terraform):**
-- `SESSION_CACHE` - KV namespace for session correlation
 - `API_TOKEN` - Cloudflare scoped API Token
 - `LIST_ID` - Gateway list UUID for auto-populated hostnames
 - `ACCOUNT_ID` - Cloudflare account ID
@@ -47,7 +41,6 @@ terraform destroy  # Remove all resources
 - Logs: Edit
 - Zero Trust: Edit
 - Zero Trust PII: Read
-- Workers KV Storage: Edit
 - Workers Scripts: Edit
 
 **Gateway Policies (4 managed policies, evaluated in order: DNS → Network → HTTP):**
@@ -87,11 +80,11 @@ Uses Cloudflare provider v5 pattern plus `http` and `time` providers.
 
 **Key resources in `resources.tf`:**
 - `cloudflare_worker` + `cloudflare_worker_version` + `cloudflare_workers_deployment`
-- `cloudflare_workers_kv_namespace` for session correlation
 - Three `cloudflare_zero_trust_list` resources (auto + manual bypass + manual blocklist)
 - Four `cloudflare_zero_trust_gateway_policy` resources (DNS Block, Network Block, Do Not Inspect, HTTP Block) with dynamic precedence
 - `time_sleep` - 10s delay after deployment for Logpush validation
 - `data.http.gateway_rules` - Fetches existing rules to calculate unique precedence
+- One `cloudflare_logpush_job` for `zero_trust_network_sessions` (fields: SessionID, ConnectionCloseReason, SNI)
 
 **Precedence calculation:** Queries existing Gateway rules via API and finds first four available consecutive slots starting from 0 (DNS Block → Network Block → DNI → HTTP Block).
 
@@ -121,15 +114,9 @@ logpush_secret         = "generate-with-openssl-rand-hex-32"
 # Health check (no auth required)
 curl https://tf-cf-dni-list.YOUR_SUBDOMAIN.workers.dev/
 
-# Simulate zero_trust batch (requires secret header)
+# Simulate zero_trust batch with SNI (requires secret header)
 curl -X POST https://tf-cf-dni-list.YOUR_SUBDOMAIN.workers.dev/ \
   -H "X-Logpush-Secret: YOUR_SECRET" \
   -H "Content-Type: application/x-ndjson" \
-  -d '{"ConnectionCloseReason":"CLIENT_TLS_ERROR","SessionID":"test-123"}'
-
-# Simulate gateway_network batch (completes correlation)
-curl -X POST https://tf-cf-dni-list.YOUR_SUBDOMAIN.workers.dev/gateway \
-  -H "X-Logpush-Secret: YOUR_SECRET" \
-  -H "Content-Type: application/x-ndjson" \
-  -d '{"SessionID":"test-123","SNI":"example.com"}'
+  -d '{"ConnectionCloseReason":"CLIENT_TLS_ERROR","SessionID":"test-123","SNI":"example.com"}'
 ```

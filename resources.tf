@@ -1,13 +1,4 @@
 # -----------------------------------------------------------------------------
-# KV Namespace for session correlation
-# -----------------------------------------------------------------------------
-
-resource "cloudflare_workers_kv_namespace" "session_cache" {
-  account_id = var.account_id
-  title      = "tf-cf-dni-list-session-cache"
-}
-
-# -----------------------------------------------------------------------------
 # Gateway Lists
 # -----------------------------------------------------------------------------
 
@@ -67,11 +58,6 @@ resource "cloudflare_worker_version" "dni_list" {
   }]
 
   bindings = [
-    {
-      type         = "kv_namespace"
-      name         = "SESSION_CACHE"
-      namespace_id = cloudflare_workers_kv_namespace.session_cache.id
-    },
     {
       type = "plain_text"
       name = "ACCOUNT_ID"
@@ -271,21 +257,7 @@ resource "cloudflare_logpush_job" "zero_trust_sessions" {
     }
   })
   output_options = {
-    field_names = ["SessionID", "ConnectionCloseReason"]
-    output_type = "ndjson"
-  }
-}
-
-resource "cloudflare_logpush_job" "gateway_network" {
-  account_id       = var.account_id
-  name             = "tf-cf-dni-list-gateway"
-  enabled          = true
-  dataset          = "gateway_network"
-  destination_conf = "https://tf-cf-dni-list.${var.workers_subdomain}.workers.dev/gateway?header_X-Logpush-Secret=${var.logpush_secret}"
-
-  depends_on = [time_sleep.wait_for_worker]
-  output_options = {
-    field_names = ["SessionID", "SNI"]
+    field_names = ["SessionID", "ConnectionCloseReason", "SNI"]
     output_type = "ndjson"
   }
 }

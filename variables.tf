@@ -4,7 +4,7 @@ variable "account_id" {
 }
 
 variable "cloudflare_api_token" {
-  description = "Cloudflare scoped API Token (Account: Logs Edit, Zero Trust Edit, Zero Trust PII Read, Workers KV Storage Edit, Workers Scripts Edit)"
+  description = "Cloudflare scoped API Token (Account: Logs Edit, Zero Trust Edit, Zero Trust PII Read, Workers Scripts Edit)"
   type        = string
   sensitive   = true
 }
