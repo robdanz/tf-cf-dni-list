@@ -182,14 +182,22 @@ resource "cloudflare_zero_trust_gateway_policy" "dni_tls_errors" {
   filters = ["http"]
 
   traffic = format(
-    "any(http.conn.domains[*] in $%s) or http.conn.hostname in $%s or (http.conn.hostname in $%s and not(any(http.conn.security_category[*] in {68 178 80 187 83 176 175 117 131 188 134 191 151 153}))) or (http.conn.hostname in $%s and not(any(http.conn.content_category[*] in {32 169 177 128}))) or (http.conn.hostname in $%s and not(any(app.statuses[*] == \"unapproved\")) and not(http.conn.hostname in $%s) and not(http.conn.hostname in $%s))",
-    cloudflare_zero_trust_list.bypass_inspection.id,
-    cloudflare_zero_trust_list.bypass_inspection_hosts.id,
-    cloudflare_zero_trust_list.tls_error_hosts.id,
-    cloudflare_zero_trust_list.tls_error_hosts.id,
-    cloudflare_zero_trust_list.tls_error_hosts.id,
-    cloudflare_zero_trust_list.domain_blocklist.id,
-    cloudflare_zero_trust_list.host_blocklist.id
+    "(any(http.conn.domains[*] in $%s) and not(any(http.conn.domains[*] in $%s)) and not(http.conn.hostname in $%s)) or (http.conn.hostname in $%s and not(any(http.conn.domains[*] in $%s)) and not(http.conn.hostname in $%s)) or (http.conn.hostname in $%s and not(any(http.conn.security_category[*] in {68 178 80 187 83 176 175 117 131 188 134 191 151 153})) and not(any(http.conn.domains[*] in $%s)) and not(http.conn.hostname in $%s)) or (http.conn.hostname in $%s and not(any(http.conn.content_category[*] in {32 169 177 128})) and not(any(http.conn.domains[*] in $%s)) and not(http.conn.hostname in $%s)) or (http.conn.hostname in $%s and not(any(app.statuses[*] == \"unapproved\")) and not(any(http.conn.domains[*] in $%s)) and not(http.conn.hostname in $%s))",
+    cloudflare_zero_trust_list.bypass_inspection.id,       # 1: bypass domains list
+    cloudflare_zero_trust_list.domain_blocklist.id,        # 1: not in domain blocklist
+    cloudflare_zero_trust_list.host_blocklist.id,          # 1: not in host blocklist
+    cloudflare_zero_trust_list.bypass_inspection_hosts.id, # 2: bypass hosts list
+    cloudflare_zero_trust_list.domain_blocklist.id,        # 2: not in domain blocklist
+    cloudflare_zero_trust_list.host_blocklist.id,          # 2: not in host blocklist
+    cloudflare_zero_trust_list.tls_error_hosts.id,         # 3: TLS error hosts
+    cloudflare_zero_trust_list.domain_blocklist.id,        # 3: not in domain blocklist
+    cloudflare_zero_trust_list.host_blocklist.id,          # 3: not in host blocklist
+    cloudflare_zero_trust_list.tls_error_hosts.id,         # 4: TLS error hosts
+    cloudflare_zero_trust_list.domain_blocklist.id,        # 4: not in domain blocklist
+    cloudflare_zero_trust_list.host_blocklist.id,          # 4: not in host blocklist
+    cloudflare_zero_trust_list.tls_error_hosts.id,         # 5: TLS error hosts
+    cloudflare_zero_trust_list.domain_blocklist.id,        # 5: not in domain blocklist
+    cloudflare_zero_trust_list.host_blocklist.id           # 5: not in host blocklist
   )
 }
 

@@ -59,12 +59,18 @@ SNI Domain in $BLOCK_LIST → Block
 
 *Do Not Inspect - TLS Error Hosts (HTTP, 5 OR groups):*
 ```
-Domain in $BYPASS_DOMAIN_LIST
-OR Host in $BYPASS_HOST_LIST
-OR (Host in $TLS_ERROR_LIST AND Security Categories not in {Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware})
-OR (Host in $TLS_ERROR_LIST AND Content Categories not in {Security Risks, New Domains, Newly Seen Domains, Parked & For Sale})
-OR (Host in $TLS_ERROR_LIST AND Application Status is not unapproved AND Host not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST)
+Each condition excludes both block lists — block/category always overrides bypass.
+
+(Domain in $BYPASS_DOMAIN_LIST AND Domain not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST)
+OR (Host in $BYPASS_HOST_LIST AND Domain not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST)
+OR (Host in $TLS_ERROR_LIST AND Security Categories not in {dangerous} AND Domain not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST)
+OR (Host in $TLS_ERROR_LIST AND Content Categories not in {risky} AND Domain not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST)
+OR (Host in $TLS_ERROR_LIST AND Application Status is not unapproved AND Domain not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST)
 ```
+
+Selectors used in traffic expression:
+- Domain blocklist exclusion: `not(any(http.conn.domains[*] in $DOMAIN_BLOCK_LIST))` — matches domain + subdomains (pre-TLS)
+- Host blocklist exclusion: `not(http.conn.hostname in $HOST_BLOCK_LIST)` — exact hostname match (pre-TLS)
 
 *Block HTTP - Domain/Host Blocklists (lower priority than DNI):*
 ```

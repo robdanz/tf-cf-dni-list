@@ -126,13 +126,19 @@ Policies are evaluated in order: DNS → Network → HTTP. All four policies are
 
 ### HTTP Do Not Inspect Policy (5 OR groups)
 
+Every condition excludes both block lists — a host or domain on a block list will never match this rule, regardless of which bypass list it appears in or what categories it has. The intent is that block/category classification always overrides bypass.
+
 | # | Condition | Purpose |
 |---|-----------|---------|
-| 1 | Domain in `01-BYPASS-INSPECTION-DOMAINS` | Unconditional bypass for curated domains (matches domain + subdomains) |
-| 2 | Host in `01-BYPASS-INSPECTION-HOSTS` | Unconditional bypass for specific hostnames (exact match only) |
-| 3 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Security Categories not in {dangerous categories} | Bypass TLS error hosts unless they are in dangerous security categories (Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware) |
-| 4 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Content Categories not in {risky categories} | Bypass TLS error hosts unless they are in risky content categories (Security Risks, New Domains, Newly Seen Domains, Parked & For Sale Domains) |
-| 5 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Application Status is not unapproved AND Host not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` | Bypass TLS error hosts unless the application is unapproved or the host is in either block list |
+| 1 | Domain in `01-BYPASS-INSPECTION-DOMAINS` AND Domain not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` | Bypass curated domains unless blocked (domain + subdomain matching) |
+| 2 | Host in `01-BYPASS-INSPECTION-HOSTS` AND Domain not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` | Bypass curated hostnames unless blocked (exact match) |
+| 3 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Security Categories not in {dangerous} AND Domain not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` | Bypass TLS error hosts with safe security categories, unless blocked |
+| 4 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Content Categories not in {risky} AND Domain not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` | Bypass TLS error hosts with safe content categories, unless blocked |
+| 5 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Application Status is not unapproved AND Domain not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` | Bypass TLS error hosts for approved applications, unless blocked |
+
+**Dangerous security categories:** Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware
+
+**Risky content categories:** Security Risks, New Domains, Newly Seen Domains, Parked & For Sale Domains
 
 ### HTTP Block Policy
 | Condition | Action |
