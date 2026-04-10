@@ -4,11 +4,11 @@ Automated TLS inspection bypass management for Cloudflare Zero Trust. This solut
 
 ## Overview
 
-When TLS inspection is enabled in Cloudflare Gateway, certain hosts fail inspection due to certificate pinning, mutual TLS, or other incompatibilities. These failures generate `CLIENT_TLS_ERROR` events in Zero Trust network session logs.
+When TLS inspection is enabled in Cloudflare Gateway, certain hosts fail inspection due to certificate pinning, mutual TLS, or other incompatibilities. These failures generate `CLIENT_TLS_ERROR` events in Zero Trust network session logs, which now include the SNI (hostname) directly.
 
 This solution:
-1. Correlates Zero Trust session logs with Gateway network logs via Logpush
-2. Automatically extracts the SNI (hostname) from failed TLS sessions
+1. Receives `CLIENT_TLS_ERROR` records from a single Logpush job (`zero_trust_network_sessions`)
+2. Reads the SNI field directly from each record — no secondary log stream or session correlation needed
 3. Adds hostnames to a Gateway list used by a "Do Not Inspect" HTTP policy
 4. Filters bypass decisions using security categories, content categories, and application approval status
 
@@ -74,7 +74,6 @@ Create a [scoped API token](https://dash.cloudflare.com/profile/api-tokens) with
 | Logs | Edit |
 | Zero Trust | Edit |
 | Zero Trust PII | Read |
-| Workers KV Storage | Edit |
 | Workers Scripts | Edit |
 
 ### 3. Deploy
@@ -89,7 +88,6 @@ terraform apply
 | Resource | Description |
 |----------|-------------|
 | **Worker** | `tf-cf-dni-list` - Logpush HTTP destination endpoint |
-| **KV Namespace** | Session correlation cache (5-minute TTL) |
 | **Gateway List** | `01-BYPASS_CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames |
 | **Gateway List** | `01-BYPASS-INSPECTION-DOMAINS` - Manual domain overrides |
 | **Gateway List** | `01-BLOCK-DOMAIN-LIST` - Manual domain blocklist |
@@ -97,7 +95,7 @@ terraform apply
 | **Gateway Network Policy** | "Block Network - SNI Domain Blocklist" - Block SNI connections for blocklist domains |
 | **Gateway HTTP Policy** | "Do Not Inspect - TLS Error Hosts" - Bypass with category, app, and blocklist filtering |
 | **Gateway HTTP Policy** | "Block HTTP - Domain Blocklist" - Block HTTP connections for blocklist domains |
-| **Logpush Jobs** | Two jobs: `zero_trust_network_sessions` and `gateway_network` |
+| **Logpush Job** | `zero_trust_network_sessions` - Streams `CLIENT_TLS_ERROR` records (with SNI) to the worker |
 
 ## Gateway Policy Logic
 
@@ -136,32 +134,30 @@ The Logpush endpoint is protected by a shared secret header (`X-Logpush-Secret`)
 ## Data Flow
 
 ```
-Zero Trust Network Sessions          Gateway Network Logs
-(CLIENT_TLS_ERROR + SessionID)       (SessionID + SNI)
-            │                                 │
-            └──────────┬──────────────────────┘
-                       │
-                       ▼
-              ┌─────────────────┐
-              │  Worker (KV)    │
-              │  Correlates     │
-              │  SessionID→SNI  │
-              └────────┬────────┘
-                       │
-                       ▼
-              ┌─────────────────┐
-              │  Gateway Lists  │
-              │  TLS Error SNI  │──── auto-populated
-              │  Bypass Domains │──── manual
-              │  Block Domains  │──── manual
-              └────────┬────────┘
-                       │
-              ┌────────┴────────┐
-              ▼                 ▼
-     ┌────────────────┐ ┌──────────────┐
-     │ Do Not Inspect │ │ Block (DNS,  │
-     │ (4 OR groups)  │ │ Network)     │
-     └────────────────┘ └──────────────┘
+Zero Trust Network Sessions
+(CLIENT_TLS_ERROR + SessionID + SNI)
+              │
+              ▼
+     ┌─────────────────┐
+     │  Worker         │
+     │  Reads SNI      │
+     │  (stateless)    │
+     └────────┬────────┘
+              │
+              ▼
+     ┌─────────────────┐
+     │  Gateway Lists  │
+     │  TLS Error SNI  │──── auto-populated
+     │  Bypass Domains │──── manual
+     │  Block Domains  │──── manual
+     └────────┬────────┘
+              │
+     ┌────────┴────────┐
+     ▼                 ▼
+┌────────────────┐ ┌──────────────┐
+│ Do Not Inspect │ │ Block (DNS,  │
+│ (4 OR groups)  │ │ Network)     │
+└────────────────┘ └──────────────┘
 ```
 
 ## Troubleshooting
@@ -172,9 +168,10 @@ Zero Trust Network Sessions          Gateway Network Logs
 - Check that `logpush_secret` matches in both tfvars and destination URL
 
 ### Hostnames not being added
-- Verify Logpush jobs are enabled and running in the Cloudflare dashboard
+- Verify the Logpush job is enabled and running in the Cloudflare dashboard
 - Check worker logs in Workers & Pages → tf-cf-dni-list → Logs
 - Ensure the hostname passes validation (RFC-compliant, max 253 chars)
+- Confirm `CLIENT_TLS_ERROR` records in the dataset include a non-empty `SNI` field
 
 ### Policy not matching traffic
 - Confirm the lists contain entries (Zero Trust → Gateway → Lists)
