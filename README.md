@@ -12,13 +12,13 @@ This solution:
 3. Adds hostnames to a Gateway list used by a "Do Not Inspect" HTTP policy
 4. Filters bypass decisions using security categories, content categories, and application approval status
 
-## Three-List Architecture
+## Five-List Architecture
 
 ### 1. `01-BYPASS_CLIENT_TLS_ERROR_SNI` (Auto-populated)
-Hostnames are automatically added when a `CLIENT_TLS_ERROR` is detected. This list grows organically as users encounter TLS inspection failures. The Do Not Inspect policy applies additional filtering to these hostnames — bypassing only those that are not in dangerous security/content categories, are not unapproved applications, and are not in the block list.
+Hostnames are automatically added when a `CLIENT_TLS_ERROR` is detected. This list grows organically as users encounter TLS inspection failures. The Do Not Inspect policy applies additional filtering to these hostnames — bypassing only those that are not in dangerous security/content categories, are not unapproved applications, and are not in either block list.
 
 ### 2. `01-BYPASS-INSPECTION-DOMAINS` (Manually managed)
-A curated list of domains for unconditional inspection bypass.
+A curated list of domains for unconditional inspection bypass. Entries match the domain **and all subdomains** (e.g., `example.com` also bypasses `api.example.com`).
 
 **Recommended workflow:**
 1. Periodically review the auto-populated `01-BYPASS_CLIENT_TLS_ERROR_SNI` list
@@ -28,11 +28,22 @@ A curated list of domains for unconditional inspection bypass.
 
 This consolidation keeps the lists manageable and reduces policy evaluation overhead.
 
-### 3. `01-BLOCK-DOMAIN-LIST` (Manually managed)
-A curated list of domains to block at every layer. Domains in this list are:
+### 3. `01-BYPASS-INSPECTION-HOSTS` (Manually managed)
+A curated list of exact hostnames for unconditional inspection bypass. Unlike the domains list, entries match **only the specified hostname** — no subdomain matching. Use this when you need precise control over a single hostname without bypassing the entire domain.
+
+### 4. `01-BLOCK-DOMAIN-LIST` (Manually managed)
+A curated list of domains to block at every layer. Entries match the domain and all subdomains. Domains in this list are:
 - Blocked at the DNS layer (query is refused)
 - Blocked at the Network layer (SNI-based connection blocking)
+- Blocked at the HTTP layer
 - Excluded from the Do Not Inspect bypass (forced inspection so HTTP-level rules can evaluate)
+
+### 5. `01-BLOCK-HOST-LIST` (Manually managed)
+A curated list of exact hostnames to block at every layer. Entries match **only the specified hostname**. Use this for targeted blocking of a specific hostname without blocking the entire domain. Hosts in this list are:
+- Blocked at the DNS layer (exact FQDN match)
+- Blocked at the Network layer (exact SNI match)
+- Blocked at the HTTP layer (exact host header match)
+- Excluded from the Do Not Inspect bypass
 
 ## Requirements
 
@@ -89,12 +100,14 @@ terraform apply
 |----------|-------------|
 | **Worker** | `tf-cf-dni-list` - Logpush HTTP destination endpoint |
 | **Gateway List** | `01-BYPASS_CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames |
-| **Gateway List** | `01-BYPASS-INSPECTION-DOMAINS` - Manual domain overrides |
-| **Gateway List** | `01-BLOCK-DOMAIN-LIST` - Manual domain blocklist |
-| **Gateway DNS Policy** | "Block DNS - Domain Blocklist" - Block DNS queries for blocklist domains |
-| **Gateway Network Policy** | "Block Network - SNI Domain Blocklist" - Block SNI connections for blocklist domains |
+| **Gateway List** | `01-BYPASS-INSPECTION-DOMAINS` - Manual domain overrides (domain + subdomain match) |
+| **Gateway List** | `01-BYPASS-INSPECTION-HOSTS` - Manual hostname overrides (exact match) |
+| **Gateway List** | `01-BLOCK-DOMAIN-LIST` - Manual domain blocklist (domain + subdomain match) |
+| **Gateway List** | `01-BLOCK-HOST-LIST` - Manual host blocklist (exact match) |
+| **Gateway DNS Policy** | "Block DNS - Domain Blocklist" - Block DNS queries for blocklist domains and hosts |
+| **Gateway Network Policy** | "Block Network - SNI Domain Blocklist" - Block SNI connections for blocklist domains and hosts |
 | **Gateway HTTP Policy** | "Do Not Inspect - TLS Error Hosts" - Bypass with category, app, and blocklist filtering |
-| **Gateway HTTP Policy** | "Block HTTP - Domain Blocklist" - Block HTTP connections for blocklist domains |
+| **Gateway HTTP Policy** | "Block HTTP - Domain Blocklist" - Block HTTP connections for blocklist domains and hosts |
 | **Logpush Job** | `zero_trust_network_sessions` - Streams `CLIENT_TLS_ERROR` records (with SNI) to the worker |
 
 ## Gateway Policy Logic
@@ -111,19 +124,20 @@ Policies are evaluated in order: DNS → Network → HTTP. All four policies are
 |-----------|--------|
 | SNI Domain in `01-BLOCK-DOMAIN-LIST` | Block |
 
-### HTTP Do Not Inspect Policy (4 OR groups)
+### HTTP Do Not Inspect Policy (5 OR groups)
 
 | # | Condition | Purpose |
 |---|-----------|---------|
-| 1 | Domain in `01-BYPASS-INSPECTION-DOMAINS` | Unconditional bypass for curated domains |
-| 2 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Security Categories not in {dangerous categories} | Bypass TLS error hosts unless they are in dangerous security categories (Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware) |
-| 3 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Content Categories not in {risky categories} | Bypass TLS error hosts unless they are in risky content categories (Security Risks, New Domains, Newly Seen Domains, Parked & For Sale Domains) |
-| 4 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Application Status is not unapproved AND Host not in `01-BLOCK-DOMAIN-LIST` | Bypass TLS error hosts unless the application is unapproved or the host is in the block list |
+| 1 | Domain in `01-BYPASS-INSPECTION-DOMAINS` | Unconditional bypass for curated domains (matches domain + subdomains) |
+| 2 | Host in `01-BYPASS-INSPECTION-HOSTS` | Unconditional bypass for specific hostnames (exact match only) |
+| 3 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Security Categories not in {dangerous categories} | Bypass TLS error hosts unless they are in dangerous security categories (Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware) |
+| 4 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Content Categories not in {risky categories} | Bypass TLS error hosts unless they are in risky content categories (Security Risks, New Domains, Newly Seen Domains, Parked & For Sale Domains) |
+| 5 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Application Status is not unapproved AND Host not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` | Bypass TLS error hosts unless the application is unapproved or the host is in either block list |
 
 ### HTTP Block Policy
 | Condition | Action |
 |-----------|--------|
-| Domain in `01-BLOCK-DOMAIN-LIST` | Block |
+| Domain in `01-BLOCK-DOMAIN-LIST` OR Host in `01-BLOCK-HOST-LIST` | Block |
 
 This policy has lower priority than Do Not Inspect, ensuring DNI rules are evaluated first.
 

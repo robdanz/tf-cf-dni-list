@@ -21,10 +21,12 @@ terraform destroy  # Remove all resources
 
 **Single source file:** `src/index.ts` contains all worker logic.
 
-**Three Gateway Lists:**
+**Five Gateway Lists:**
 - `01-BYPASS_CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames from TLS errors
-- `01-BYPASS-INSPECTION-DOMAINS` - Manually managed domain overrides
-- `01-BLOCK-DOMAIN-LIST` - Manually managed domain blocklist (blocked at DNS, Network, and excluded from DNI bypass)
+- `01-BYPASS-INSPECTION-DOMAINS` - Manually managed domain overrides (matches domain + subdomains)
+- `01-BYPASS-INSPECTION-HOSTS` - Manually managed hostname overrides (exact match only)
+- `01-BLOCK-DOMAIN-LIST` - Manually managed domain blocklist (blocked at DNS, Network, HTTP, and excluded from DNI bypass)
+- `01-BLOCK-HOST-LIST` - Manually managed host blocklist (exact match, blocked at DNS, Network, HTTP, and excluded from DNI bypass)
 
 **Data Flow:**
 1. `POST /` receives `zero_trust_network_sessions` logs filtered to `CLIENT_TLS_ERROR`
@@ -55,17 +57,18 @@ Domain in $BLOCK_LIST → Block
 SNI Domain in $BLOCK_LIST → Block
 ```
 
-*Do Not Inspect - TLS Error Hosts (HTTP, 4 OR groups):*
+*Do Not Inspect - TLS Error Hosts (HTTP, 5 OR groups):*
 ```
-Domain in $BYPASS_LIST
+Domain in $BYPASS_DOMAIN_LIST
+OR Host in $BYPASS_HOST_LIST
 OR (Host in $TLS_ERROR_LIST AND Security Categories not in {Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware})
 OR (Host in $TLS_ERROR_LIST AND Content Categories not in {Security Risks, New Domains, Newly Seen Domains, Parked & For Sale})
-OR (Host in $TLS_ERROR_LIST AND Application Status is not unapproved AND Host not in $BLOCK_LIST)
+OR (Host in $TLS_ERROR_LIST AND Application Status is not unapproved AND Host not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST)
 ```
 
-*Block HTTP - Domain Blocklist (lower priority than DNI):*
+*Block HTTP - Domain/Host Blocklists (lower priority than DNI):*
 ```
-Domain in $BLOCK_LIST → Block
+Domain in $DOMAIN_BLOCK_LIST OR Host in $HOST_BLOCK_LIST → Block
 ```
 
 **Security Category IDs (hardcoded in traffic expression):**
@@ -80,7 +83,7 @@ Uses Cloudflare provider v5 pattern plus `http` and `time` providers.
 
 **Key resources in `resources.tf`:**
 - `cloudflare_worker` + `cloudflare_worker_version` + `cloudflare_workers_deployment`
-- Three `cloudflare_zero_trust_list` resources (auto + manual bypass + manual blocklist)
+- Five `cloudflare_zero_trust_list` resources (auto TLS error + manual bypass domains + manual bypass hosts + manual domain blocklist + manual host blocklist)
 - Four `cloudflare_zero_trust_gateway_policy` resources (DNS Block, Network Block, Do Not Inspect, HTTP Block) with dynamic precedence
 - `time_sleep` - 10s delay after deployment for Logpush validation
 - `data.http.gateway_rules` - Fetches existing rules to calculate unique precedence

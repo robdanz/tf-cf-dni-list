@@ -14,13 +14,33 @@ output "gateway_list_name" {
 }
 
 output "bypass_inspection_list_id" {
-  description = "ID of the manually managed bypass inspection list"
+  description = "ID of the manually managed bypass inspection domains list"
   value       = cloudflare_zero_trust_list.bypass_inspection.id
 }
 
 output "bypass_inspection_list_name" {
-  description = "Name of the bypass inspection list"
+  description = "Name of the bypass inspection domains list"
   value       = cloudflare_zero_trust_list.bypass_inspection.name
+}
+
+output "bypass_inspection_hosts_list_id" {
+  description = "ID of the manually managed bypass inspection hosts list"
+  value       = cloudflare_zero_trust_list.bypass_inspection_hosts.id
+}
+
+output "bypass_inspection_hosts_list_name" {
+  description = "Name of the bypass inspection hosts list"
+  value       = cloudflare_zero_trust_list.bypass_inspection_hosts.name
+}
+
+output "host_blocklist_id" {
+  description = "ID of the manually managed host blocklist"
+  value       = cloudflare_zero_trust_list.host_blocklist.id
+}
+
+output "host_blocklist_name" {
+  description = "Name of the host blocklist"
+  value       = cloudflare_zero_trust_list.host_blocklist.name
 }
 
 output "worker_id" {

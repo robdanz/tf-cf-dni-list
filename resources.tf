@@ -23,6 +23,20 @@ resource "cloudflare_zero_trust_list" "domain_blocklist" {
   type        = "DOMAIN"
 }
 
+resource "cloudflare_zero_trust_list" "bypass_inspection_hosts" {
+  account_id  = var.account_id
+  name        = "01-BYPASS-INSPECTION-HOSTS"
+  description = "Manually managed hostname bypass list - exact hostname match, unconditional Do Not Inspect bypass"
+  type        = "HOST"
+}
+
+resource "cloudflare_zero_trust_list" "host_blocklist" {
+  account_id  = var.account_id
+  name        = "01-BLOCK-HOST-LIST"
+  description = "Manually managed host blocklist - exact hostname match, blocked at DNS, Network, HTTP, and excluded from Do Not Inspect bypass"
+  type        = "HOST"
+}
+
 # -----------------------------------------------------------------------------
 # Worker (v5 pattern: worker + version + deployment)
 # Note: Requires building the TypeScript first. Run: npm run build
@@ -168,12 +182,14 @@ resource "cloudflare_zero_trust_gateway_policy" "dni_tls_errors" {
   filters = ["http"]
 
   traffic = format(
-    "any(http.conn.domains[*] in $%s) or (http.conn.hostname in $%s and not(any(http.conn.security_category[*] in {68 178 80 187 83 176 175 117 131 188 134 191 151 153}))) or (http.conn.hostname in $%s and not(any(http.conn.content_category[*] in {32 169 177 128}))) or (http.conn.hostname in $%s and not(any(app.statuses[*] == \"unapproved\")) and not(http.conn.hostname in $%s))",
+    "any(http.conn.domains[*] in $%s) or http.conn.hostname in $%s or (http.conn.hostname in $%s and not(any(http.conn.security_category[*] in {68 178 80 187 83 176 175 117 131 188 134 191 151 153}))) or (http.conn.hostname in $%s and not(any(http.conn.content_category[*] in {32 169 177 128}))) or (http.conn.hostname in $%s and not(any(app.statuses[*] == \"unapproved\")) and not(http.conn.hostname in $%s) and not(http.conn.hostname in $%s))",
     cloudflare_zero_trust_list.bypass_inspection.id,
+    cloudflare_zero_trust_list.bypass_inspection_hosts.id,
     cloudflare_zero_trust_list.tls_error_hosts.id,
     cloudflare_zero_trust_list.tls_error_hosts.id,
     cloudflare_zero_trust_list.tls_error_hosts.id,
-    cloudflare_zero_trust_list.domain_blocklist.id
+    cloudflare_zero_trust_list.domain_blocklist.id,
+    cloudflare_zero_trust_list.host_blocklist.id
   )
 }
 
@@ -184,7 +200,7 @@ resource "cloudflare_zero_trust_gateway_policy" "dni_tls_errors" {
 resource "cloudflare_zero_trust_gateway_policy" "http_block_blocklist" {
   account_id  = var.account_id
   name        = "Block HTTP - Domain Blocklist"
-  description = "Block HTTP connections for domains in the manually managed blocklist"
+  description = "Block HTTP connections for domains or hosts in the manually managed blocklists"
   precedence  = local.http_block_precedence
   enabled     = true
   action      = "block"
@@ -192,8 +208,9 @@ resource "cloudflare_zero_trust_gateway_policy" "http_block_blocklist" {
   filters = ["http"]
 
   traffic = format(
-    "any(http.request.domains[*] in $%s)",
-    cloudflare_zero_trust_list.domain_blocklist.id
+    "any(http.request.domains[*] in $%s) or http.request.host in $%s",
+    cloudflare_zero_trust_list.domain_blocklist.id,
+    cloudflare_zero_trust_list.host_blocklist.id
   )
 }
 
@@ -204,7 +221,7 @@ resource "cloudflare_zero_trust_gateway_policy" "http_block_blocklist" {
 resource "cloudflare_zero_trust_gateway_policy" "dns_block_blocklist" {
   account_id  = var.account_id
   name        = "Block DNS - Domain Blocklist"
-  description = "Block DNS queries for domains in the manually managed blocklist"
+  description = "Block DNS queries for domains or hosts in the manually managed blocklists"
   precedence  = local.dns_block_precedence
   enabled     = true
   action      = "block"
@@ -212,8 +229,9 @@ resource "cloudflare_zero_trust_gateway_policy" "dns_block_blocklist" {
   filters = ["dns"]
 
   traffic = format(
-    "any(dns.domains[*] in $%s)",
-    cloudflare_zero_trust_list.domain_blocklist.id
+    "any(dns.domains[*] in $%s) or dns.fqdn in $%s",
+    cloudflare_zero_trust_list.domain_blocklist.id,
+    cloudflare_zero_trust_list.host_blocklist.id
   )
 }
 
@@ -224,7 +242,7 @@ resource "cloudflare_zero_trust_gateway_policy" "dns_block_blocklist" {
 resource "cloudflare_zero_trust_gateway_policy" "net_block_blocklist" {
   account_id  = var.account_id
   name        = "Block Network - SNI Domain Blocklist"
-  description = "Block network connections with SNI domains in the manually managed blocklist"
+  description = "Block network connections with SNI domains or hosts in the manually managed blocklists"
   precedence  = local.net_block_precedence
   enabled     = true
   action      = "block"
@@ -232,8 +250,9 @@ resource "cloudflare_zero_trust_gateway_policy" "net_block_blocklist" {
   filters = ["l4"]
 
   traffic = format(
-    "any(net.sni.domains[*] in $%s)",
-    cloudflare_zero_trust_list.domain_blocklist.id
+    "any(net.sni.domains[*] in $%s) or net.sni.host in $%s",
+    cloudflare_zero_trust_list.domain_blocklist.id,
+    cloudflare_zero_trust_list.host_blocklist.id
   )
 }
 
