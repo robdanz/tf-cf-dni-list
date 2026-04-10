@@ -24,9 +24,9 @@ terraform destroy  # Remove all resources
 **Five Gateway Lists:**
 - `01-BYPASS_CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames from TLS errors
 - `01-BYPASS-INSPECTION-DOMAINS` - Manually managed domain overrides (matches domain + subdomains)
-- `01-BYPASS-INSPECTION-HOSTS` - Manually managed hostname overrides (exact match only)
+- `01-BYPASS-INSPECTION-HOSTS` - Manually managed hostname overrides (exact match via hostname selector)
 - `01-BLOCK-DOMAIN-LIST` - Manually managed domain blocklist (blocked at DNS, Network, HTTP, and excluded from DNI bypass)
-- `01-BLOCK-HOST-LIST` - Manually managed host blocklist (exact match, blocked at DNS, Network, HTTP, and excluded from DNI bypass)
+- `01-BLOCK-HOST-LIST` - Manually managed host blocklist (exact match via hostname selector, blocked at DNS, Network, HTTP, and excluded from DNI bypass)
 
 **Data Flow:**
 1. `POST /` receives `zero_trust_network_sessions` logs filtered to `CLIENT_TLS_ERROR`

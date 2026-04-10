@@ -27,14 +27,14 @@ resource "cloudflare_zero_trust_list" "bypass_inspection_hosts" {
   account_id  = var.account_id
   name        = "01-BYPASS-INSPECTION-HOSTS"
   description = "Manually managed hostname bypass list - exact hostname match, unconditional Do Not Inspect bypass"
-  type        = "HOST"
+  type        = "DOMAIN"
 }
 
 resource "cloudflare_zero_trust_list" "host_blocklist" {
   account_id  = var.account_id
   name        = "01-BLOCK-HOST-LIST"
   description = "Manually managed host blocklist - exact hostname match, blocked at DNS, Network, HTTP, and excluded from Do Not Inspect bypass"
-  type        = "HOST"
+  type        = "DOMAIN"
 }
 
 # -----------------------------------------------------------------------------
