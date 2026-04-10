@@ -179,6 +179,38 @@ Zero Trust Network Sessions
 - Verify the application isn't marked as "unapproved"
 - Check policy precedence (lower number = higher priority)
 
+## Upgrading from v1 (KV + dual Logpush)
+
+The original version of this solution required two Logpush jobs and a KV namespace to correlate log streams by `SessionID`:
+
+- `zero_trust_network_sessions` — provided `SessionID` + `ConnectionCloseReason`, but not the SNI
+- `gateway_network` — provided `SessionID` + `SNI`
+- KV stored pending sessions so whichever log arrived first could wait for the other
+
+Cloudflare updated the `zero_trust_network_sessions` dataset to include the `SNI` field directly on `CLIENT_TLS_ERROR` records. The worker is now stateless — it reads SNI directly from each record and appends it to the list with no session correlation needed.
+
+**What `terraform apply` will do when upgrading:**
+
+| Change | Effect |
+|--------|--------|
+| Destroy `cloudflare_workers_kv_namespace` (session cache) | Safe — was a short-lived correlation cache only |
+| Destroy `cloudflare_logpush_job` (`tf-cf-dni-list-gateway`) | Removes the `gateway_network` job |
+| Update `cloudflare_logpush_job` (`tf-cf-dni-list-zero-trust`) | Adds `SNI` to the streamed fields |
+| Update `cloudflare_worker_version` | Deploys the simplified stateless worker |
+| Gateway lists and policies | **Untouched** — existing entries and rules are preserved |
+
+**To upgrade:**
+
+```bash
+git pull origin main
+npm install
+npm run build
+terraform plan   # review: KV + gateway job destroyed, worker + logpush updated
+terraform apply
+```
+
+The `Workers KV Storage: Edit` scope is no longer required on the API token, but having it does no harm — you can remove it from the token at your discretion.
+
 ## Teardown
 
 ```bash
