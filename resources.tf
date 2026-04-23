@@ -47,7 +47,7 @@ resource "cloudflare_worker" "dni_list" {
   name       = "tf-cf-dni-list"
   subdomain = {
     enabled          = true
-    previews_enabled = false
+    previews_enabled = true
   }
   observability = {
     enabled = true
