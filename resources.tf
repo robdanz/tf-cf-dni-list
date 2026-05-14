@@ -7,6 +7,10 @@ resource "cloudflare_zero_trust_list" "tls_error_hosts" {
   name        = "01-BYPASS_CLIENT_TLS_ERROR_SNI"
   description = "Hostnames with TLS inspection errors - auto-populated by tf-cf-dni-list worker"
   type        = "DOMAIN"
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "cloudflare_zero_trust_list" "bypass_inspection" {
@@ -14,6 +18,10 @@ resource "cloudflare_zero_trust_list" "bypass_inspection" {
   name        = "01-BYPASS-INSPECTION-DOMAINS"
   description = "Manually managed bypass domains, excluding unapproved apps"
   type        = "DOMAIN"
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "cloudflare_zero_trust_list" "domain_blocklist" {
@@ -21,6 +29,10 @@ resource "cloudflare_zero_trust_list" "domain_blocklist" {
   name        = "01-BLOCK-DOMAIN-LIST"
   description = "Manually managed domain blocklist - blocked at DNS, Network, and excluded from Do Not Inspect bypass"
   type        = "DOMAIN"
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "cloudflare_zero_trust_list" "bypass_inspection_hosts" {
@@ -28,6 +40,10 @@ resource "cloudflare_zero_trust_list" "bypass_inspection_hosts" {
   name        = "01-BYPASS-INSPECTION-HOSTS"
   description = "Manually managed hostname bypass list - exact hostname match, unconditional Do Not Inspect bypass"
   type        = "DOMAIN"
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "cloudflare_zero_trust_list" "host_blocklist" {
@@ -35,6 +51,10 @@ resource "cloudflare_zero_trust_list" "host_blocklist" {
   name        = "01-BLOCK-HOST-LIST"
   description = "Manually managed host blocklist - exact hostname match, blocked at DNS, Network, HTTP, and excluded from Do Not Inspect bypass"
   type        = "DOMAIN"
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # -----------------------------------------------------------------------------
