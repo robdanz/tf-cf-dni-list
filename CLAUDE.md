@@ -93,7 +93,7 @@ Uses Cloudflare provider v5 pattern plus `http` and `time` providers.
 
 **Key resources in `resources.tf`:**
 - `cloudflare_worker` + `cloudflare_worker_version` + `cloudflare_workers_deployment`
-- Five `cloudflare_zero_trust_list` resources (auto TLS error + manual bypass domains + manual bypass hosts + manual domain blocklist + manual host blocklist)
+- Seven `cloudflare_zero_trust_list` resources (auto TLS error + manual bypass domains + manual bypass hosts + manual domain blocklist + manual host blocklist + always-inspect domains + always-inspect hosts)
 - Four `cloudflare_zero_trust_gateway_policy` resources (DNS Block, Network Block, Do Not Inspect, HTTP Block) with dynamic precedence
 - `time_sleep` - 10s delay after deployment for Logpush validation
 - `data.http.gateway_rules` - Fetches existing rules to calculate unique precedence
