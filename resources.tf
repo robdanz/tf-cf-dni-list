@@ -57,6 +57,28 @@ resource "cloudflare_zero_trust_list" "host_blocklist" {
   }
 }
 
+resource "cloudflare_zero_trust_list" "always_inspect_domains" {
+  account_id  = var.account_id
+  name        = "01-ALWAYS-INSPECT-DOMAINS"
+  description = "Domains that must never bypass TLS inspection - overrides all bypass mechanisms including manual bypass and TLS error bypass"
+  type        = "DOMAIN"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "cloudflare_zero_trust_list" "always_inspect_hosts" {
+  account_id  = var.account_id
+  name        = "01-ALWAYS-INSPECT-HOSTS"
+  description = "Exact hostnames that must never bypass TLS inspection - overrides all bypass mechanisms including manual bypass and TLS error bypass"
+  type        = "DOMAIN"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 # -----------------------------------------------------------------------------
 # Worker (v5 pattern: worker + version + deployment)
 # Note: Requires building the TypeScript first. Run: npm run build
