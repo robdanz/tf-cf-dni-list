@@ -167,7 +167,8 @@ data "http" "gateway_rules" {
 }
 
 locals {
-  gateway_rules = try(jsondecode(data.http.gateway_rules.response_body).result, [])
+  gateway_rules_raw = jsondecode(data.http.gateway_rules.response_body).result
+  gateway_rules     = local.gateway_rules_raw != null ? local.gateway_rules_raw : []
   # Managed policy names to exclude from precedence calculations
   managed_policy_names = toset([
     "Do Not Inspect - TLS Error Hosts",
