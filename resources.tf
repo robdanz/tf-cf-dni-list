@@ -167,8 +167,6 @@ data "http" "gateway_rules" {
 }
 
 locals {
-  gateway_rules_raw = jsondecode(data.http.gateway_rules.response_body).result
-  gateway_rules     = local.gateway_rules_raw != null ? local.gateway_rules_raw : []
   # Managed policy names to exclude from precedence calculations
   managed_policy_names = toset([
     "Do Not Inspect - TLS Error Hosts",
@@ -177,11 +175,12 @@ locals {
     "Block Network - SNI Domain Blocklist",
   ])
   # Get all precedence values from ALL rules (excluding our own policies)
+  # try() handles two cases: result is null (no rules), or API returned an error
   # Precedence is shared across DNS, network, and HTTP policies
-  all_precedences = toset([
-    for rule in local.gateway_rules :
+  all_precedences = toset(try([
+    for rule in jsondecode(data.http.gateway_rules.response_body).result :
     rule.precedence if !contains(local.managed_policy_names, rule.name)
-  ])
+  ], []))
   # Find the minimum precedence currently in use
   min_precedence = length(local.all_precedences) > 0 ? min(local.all_precedences...) : 1000
   # Find first four available precedence slots starting from 0
