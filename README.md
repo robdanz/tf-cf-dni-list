@@ -1,21 +1,42 @@
 # tf-cf-dni-list
 
-Automated TLS inspection bypass management for Cloudflare Zero Trust. This solution identifies hostnames causing `CLIENT_TLS_ERROR` failures and automatically adds them to a Gateway "Do Not Inspect" policy, reducing manual triage of TLS inspection issues.
+> **Disclaimer:** This project is provided as-is, without warranty or support of any kind. It is **not** an official Cloudflare product, solution, or recommendation. Cloudflare does not endorse or support this configuration. Use at your own risk and test thoroughly in a non-production environment before deploying.
+
+---
+
+## Purpose and Lifecycle
+
+This tool is intended to **smooth the initial rollout** of TLS inspection in Cloudflare Zero Trust by automatically identifying certificate-pinned applications and other hosts incompatible with inspection — and temporarily bypassing them — rather than generating a wave of user-visible errors during early adoption.
+
+**This is not a permanent fixture.** The auto-bypass list will grow over time and can erode your inspection coverage if left unattended. The correct long-term workflow is:
+
+1. **Deploy this solution** during your Zero Trust rollout to reduce friction from TLS inspection errors.
+2. **Review the `01-BYPASS_CLIENT_TLS_ERROR_SNI` list regularly** to understand what is being bypassed and why.
+3. **In parallel, monitor your SIEM** (or Cloudflare Logs Explorer / Gateway Logs) for Zero Trust network session records where `connectionCloseReason = "CLIENT_TLS_ERROR"`. Pay attention to newly appearing SNI values — each one represents a host that is being automatically added to your bypass list. For each host or domain pattern, determine whether it should be:
+   - **Permanently bypassed** (moved to `01-BYPASS-INSPECTION-DOMAINS` or `01-BYPASS-INSPECTION-HOSTS` and removed from the auto-populated list)
+   - **Blocked entirely** (added to `01-BLOCK-DOMAIN-LIST` or `01-BLOCK-HOST-LIST`)
+   - **Protected from auto-bypass** (added to `01-ALWAYS-INSPECT-DOMAINS` or `01-ALWAYS-INSPECT-HOSTS` — see below)
+4. **Once TLS inspection is stable**, evaluate whether the automated bypass mechanism is still needed or can be decommissioned.
+
+---
 
 ## Overview
 
-When TLS inspection is enabled in Cloudflare Gateway, certain hosts fail inspection due to certificate pinning, mutual TLS, or other incompatibilities. These failures generate `CLIENT_TLS_ERROR` events in Zero Trust network session logs, which now include the SNI (hostname) directly.
+Automated TLS inspection bypass management for Cloudflare Zero Trust. This solution identifies hostnames causing `CLIENT_TLS_ERROR` failures and automatically adds them to a Gateway "Do Not Inspect" policy, reducing manual triage of TLS inspection issues during rollout.
+
+When TLS inspection is enabled in Cloudflare Gateway, certain hosts fail inspection due to certificate pinning, mutual TLS, or other incompatibilities. These failures generate `CLIENT_TLS_ERROR` events in Zero Trust network session logs, which include the SNI (hostname) directly.
 
 This solution:
 1. Receives `CLIENT_TLS_ERROR` records from a single Logpush job (`zero_trust_network_sessions`)
 2. Reads the SNI field directly from each record — no secondary log stream or session correlation needed
 3. Adds hostnames to a Gateway list used by a "Do Not Inspect" HTTP policy
 4. Filters bypass decisions using security categories, content categories, and application approval status
+5. Prevents bypass of domains and hosts that are explicitly marked always-inspect (e.g., hosts where TLS errors originate from desktop apps rather than user browsers)
 
-## Five-List Architecture
+## Seven-List Architecture
 
 ### 1. `01-BYPASS_CLIENT_TLS_ERROR_SNI` (Auto-populated)
-Hostnames are automatically added when a `CLIENT_TLS_ERROR` is detected. This list grows organically as users encounter TLS inspection failures. The Do Not Inspect policy applies additional filtering to these hostnames — bypassing only those that are not in dangerous security/content categories, are not unapproved applications, and are not in either block list.
+Hostnames are automatically added when a `CLIENT_TLS_ERROR` is detected. This list grows organically as users encounter TLS inspection failures. The Do Not Inspect policy applies additional filtering — bypassing only those that are not in dangerous security/content categories, not unapproved applications, not in either block list, and not in either always-inspect list.
 
 ### 2. `01-BYPASS-INSPECTION-DOMAINS` (Manually managed)
 A curated list of domains for unconditional inspection bypass. Entries match the domain **and all subdomains** (e.g., `example.com` also bypasses `api.example.com`).
@@ -44,6 +65,18 @@ A curated list of exact hostnames to block at every layer. Entries match **only 
 - Blocked at the Network layer (exact SNI match)
 - Blocked at the HTTP layer (exact host header match)
 - Excluded from the Do Not Inspect bypass
+
+### 6. `01-ALWAYS-INSPECT-DOMAINS` (Manually managed)
+A curated list of domains that **must never bypass TLS inspection**, regardless of any other bypass mechanism. Entries here override all five DNI bypass conditions — including manual bypass lists, and the auto-populated TLS error list.
+
+**Primary use case — desktop apps that don't use the system certificate store:**
+
+Applications built on Electron, or any app using `NODE_TLS_REJECT_UNAUTHORIZED=0` or a bundled certificate store, will generate `CLIENT_TLS_ERROR` events when running under TLS inspection — even if the same domain works fine in a browser. Without this list, those TLS errors cause the worker to add the backend hostname to `01-BYPASS_CLIENT_TLS_ERROR_SNI`, disabling inspection for **all users** on that host, including browsers where inspection functions correctly.
+
+Add any domain where TLS errors originate from an incompatible desktop client (rather than a genuinely cert-pinned endpoint) to this list. Inspection will remain enforced, and the desktop app should be addressed separately (updated to trust the Cloudflare certificate, or exempted via a device profile or split tunnel).
+
+### 7. `01-ALWAYS-INSPECT-HOSTS` (Manually managed)
+Same as `01-ALWAYS-INSPECT-DOMAINS` but for exact hostname matching. Use this when you want always-inspect enforcement scoped to a specific hostname rather than the entire domain.
 
 ## Requirements
 
@@ -99,14 +132,16 @@ terraform apply
 | Resource | Description |
 |----------|-------------|
 | **Worker** | `tf-cf-dni-list` - Logpush HTTP destination endpoint |
-| **Gateway List** | `01-BYPASS_CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames |
+| **Gateway List** | `01-BYPASS_CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames from TLS errors |
 | **Gateway List** | `01-BYPASS-INSPECTION-DOMAINS` - Manual domain overrides (domain + subdomain match) |
 | **Gateway List** | `01-BYPASS-INSPECTION-HOSTS` - Manual hostname overrides (exact match) |
 | **Gateway List** | `01-BLOCK-DOMAIN-LIST` - Manual domain blocklist (domain + subdomain match) |
 | **Gateway List** | `01-BLOCK-HOST-LIST` - Manual host blocklist (exact match) |
+| **Gateway List** | `01-ALWAYS-INSPECT-DOMAINS` - Domains that must never bypass inspection (overrides all bypass) |
+| **Gateway List** | `01-ALWAYS-INSPECT-HOSTS` - Exact hostnames that must never bypass inspection (overrides all bypass) |
 | **Gateway DNS Policy** | "Block DNS - Domain Blocklist" - Block DNS queries for blocklist domains and hosts |
 | **Gateway Network Policy** | "Block Network - SNI Domain Blocklist" - Block SNI connections for blocklist domains and hosts |
-| **Gateway HTTP Policy** | "Do Not Inspect - TLS Error Hosts" - Bypass with category, app, and blocklist filtering |
+| **Gateway HTTP Policy** | "Do Not Inspect - TLS Error Hosts" - Bypass with category, app, blocklist, and always-inspect filtering |
 | **Gateway HTTP Policy** | "Block HTTP - Domain Blocklist" - Block HTTP connections for blocklist domains and hosts |
 | **Logpush Job** | `zero_trust_network_sessions` - Streams `CLIENT_TLS_ERROR` records (with SNI) to the worker |
 
@@ -117,24 +152,24 @@ Policies are evaluated in order: DNS → Network → HTTP. All four policies are
 ### DNS Block Policy
 | Condition | Action |
 |-----------|--------|
-| Domain in `01-BLOCK-DOMAIN-LIST` | Block |
+| Domain in `01-BLOCK-DOMAIN-LIST` OR Host in `01-BLOCK-HOST-LIST` | Block |
 
 ### Network Block Policy
 | Condition | Action |
 |-----------|--------|
-| SNI Domain in `01-BLOCK-DOMAIN-LIST` | Block |
+| SNI Domain in `01-BLOCK-DOMAIN-LIST` OR Host in `01-BLOCK-HOST-LIST` | Block |
 
 ### HTTP Do Not Inspect Policy (5 OR groups)
 
-Every condition excludes both block lists — a host or domain on a block list will never match this rule, regardless of which bypass list it appears in or what categories it has. The intent is that block/category classification always overrides bypass.
+Every condition excludes both block lists and both always-inspect lists. A host or domain on any of those four lists will never match this rule, regardless of which bypass list it also appears in or what categories it has. The hierarchy is: **always-inspect and block always win over bypass**.
 
 | # | Condition | Purpose |
 |---|-----------|---------|
-| 1 | Domain in `01-BYPASS-INSPECTION-DOMAINS` AND Domain not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` | Bypass curated domains unless blocked (domain + subdomain matching) |
-| 2 | Host in `01-BYPASS-INSPECTION-HOSTS` AND Domain not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` | Bypass curated hostnames unless blocked (exact match) |
-| 3 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Security Categories not in {dangerous} AND Domain not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` | Bypass TLS error hosts with safe security categories, unless blocked |
-| 4 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Content Categories not in {risky} AND Domain not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` | Bypass TLS error hosts with safe content categories, unless blocked |
-| 5 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Application Status is not unapproved AND Domain not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` | Bypass TLS error hosts for approved applications, unless blocked |
+| 1 | Domain in `01-BYPASS-INSPECTION-DOMAINS` AND Domain not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` AND Domain not in `01-ALWAYS-INSPECT-DOMAINS` AND Host not in `01-ALWAYS-INSPECT-HOSTS` | Bypass curated domains unless blocked or always-inspect |
+| 2 | Host in `01-BYPASS-INSPECTION-HOSTS` AND Domain not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` AND Domain not in `01-ALWAYS-INSPECT-DOMAINS` AND Host not in `01-ALWAYS-INSPECT-HOSTS` | Bypass curated hostnames unless blocked or always-inspect |
+| 3 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Security Categories not in {dangerous} AND Domain not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` AND Domain not in `01-ALWAYS-INSPECT-DOMAINS` AND Host not in `01-ALWAYS-INSPECT-HOSTS` | Bypass TLS error hosts with safe security categories, unless blocked or always-inspect |
+| 4 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Content Categories not in {risky} AND Domain not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` AND Domain not in `01-ALWAYS-INSPECT-DOMAINS` AND Host not in `01-ALWAYS-INSPECT-HOSTS` | Bypass TLS error hosts with safe content categories, unless blocked or always-inspect |
+| 5 | Host in `01-BYPASS_CLIENT_TLS_ERROR_SNI` AND Application Status is not unapproved AND Domain not in `01-BLOCK-DOMAIN-LIST` AND Host not in `01-BLOCK-HOST-LIST` AND Domain not in `01-ALWAYS-INSPECT-DOMAINS` AND Host not in `01-ALWAYS-INSPECT-HOSTS` | Bypass TLS error hosts for approved applications, unless blocked or always-inspect |
 
 **Dangerous security categories:** Anonymizer, Brand Embedding, C2/Botnet, Compromised, Cryptomining, DGA, DNS Tunneling, Malware, Phishing, PUP, Private IP, Scam, Spam, Spyware
 
@@ -165,19 +200,25 @@ Zero Trust Network Sessions
      └────────┬────────┘
               │
               ▼
-     ┌─────────────────┐
-     │  Gateway Lists  │
-     │  TLS Error SNI  │──── auto-populated
-     │  Bypass Domains │──── manual
-     │  Block Domains  │──── manual
-     └────────┬────────┘
+     ┌───────────────────────────┐
+     │  Gateway Lists            │
+     │  TLS Error SNI  ──────── auto-populated
+     │  Bypass Domains ──────── manual
+     │  Bypass Hosts   ──────── manual
+     │  Block Domains  ──────── manual
+     │  Block Hosts    ──────── manual
+     │  Always-Inspect Domains ─ manual (overrides bypass)
+     │  Always-Inspect Hosts ─── manual (overrides bypass)
+     └────────┬──────────────────┘
               │
      ┌────────┴────────┐
      ▼                 ▼
 ┌────────────────┐ ┌──────────────┐
 │ Do Not Inspect │ │ Block (DNS,  │
-│ (4 OR groups)  │ │ Network)     │
-└────────────────┘ └──────────────┘
+│ (5 OR groups,  │ │ Network,     │
+│  always-inspect│ │ HTTP)        │
+│  always wins)  │ └──────────────┘
+└────────────────┘
 ```
 
 ## Troubleshooting
@@ -196,8 +237,12 @@ Zero Trust Network Sessions
 ### Policy not matching traffic
 - Confirm the lists contain entries (Zero Trust → Gateway → Lists)
 - For TLS error hosts: check if the hostname falls into a blocked security or content category
+- Check whether the domain or hostname is in `01-ALWAYS-INSPECT-DOMAINS` or `01-ALWAYS-INSPECT-HOSTS` — entries there override all bypass
 - Verify the application isn't marked as "unapproved"
 - Check policy precedence (lower number = higher priority)
+
+### A host keeps getting added back to the auto-bypass list
+This typically means a desktop application on one or more devices is generating `CLIENT_TLS_ERROR` events for that host even though browsers can inspect it fine (the app doesn't use the system cert store). Add the domain or hostname to `01-ALWAYS-INSPECT-DOMAINS` / `01-ALWAYS-INSPECT-HOSTS` to prevent further auto-bypass, then address the underlying application (deploy the Cloudflare cert to the app's trust store, or configure a split tunnel / device profile exception for that application).
 
 ## Upgrading from v1 (KV + dual Logpush)
 
@@ -230,6 +275,28 @@ terraform apply
 ```
 
 The `Workers KV Storage: Edit` scope is no longer required on the API token, but having it does no harm — you can remove it from the token at your discretion.
+
+## Upgrading from v2 (five-list architecture)
+
+Version 2 introduced block lists but did not have always-inspect lists. Version 3 adds `01-ALWAYS-INSPECT-DOMAINS` and `01-ALWAYS-INSPECT-HOSTS` and updates the DNI policy traffic expression to exclude entries on those lists from all five bypass conditions.
+
+**What `terraform apply` will do when upgrading:**
+
+| Change | Effect |
+|--------|--------|
+| Create `01-ALWAYS-INSPECT-DOMAINS` Gateway list | New empty list — populate manually as needed |
+| Create `01-ALWAYS-INSPECT-HOSTS` Gateway list | New empty list — populate manually as needed |
+| Update "Do Not Inspect - TLS Error Hosts" policy | Traffic expression updated to exclude always-inspect lists from all 5 OR groups |
+| All other lists and policies | **Untouched** — existing entries and rules are preserved |
+
+**To upgrade:**
+
+```bash
+git pull origin main
+npm run build     # worker code unchanged, but rebuild to be safe
+terraform plan    # review: 2 lists created, DNI policy updated
+terraform apply
+```
 
 ## Teardown
 
