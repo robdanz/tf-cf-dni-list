@@ -1,3 +1,5 @@
+> **Disclaimer:** This project is provided as-is, without warranty or support of any kind. It is **not** an official Cloudflare product, solution, or recommendation. Cloudflare does not endorse or support this configuration. Use at your own risk and test thoroughly in a non-production environment before deploying.
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -21,12 +23,14 @@ terraform destroy  # Remove all resources
 
 **Single source file:** `src/index.ts` contains all worker logic.
 
-**Five Gateway Lists:**
+**Seven Gateway Lists:**
 - `01-BYPASS_CLIENT_TLS_ERROR_SNI` - Auto-populated hostnames from TLS errors
 - `01-BYPASS-INSPECTION-DOMAINS` - Manually managed domain overrides (matches domain + subdomains)
 - `01-BYPASS-INSPECTION-HOSTS` - Manually managed hostname overrides (exact match via hostname selector)
 - `01-BLOCK-DOMAIN-LIST` - Manually managed domain blocklist (blocked at DNS, Network, HTTP, and excluded from DNI bypass)
 - `01-BLOCK-HOST-LIST` - Manually managed host blocklist (exact match via hostname selector, blocked at DNS, Network, HTTP, and excluded from DNI bypass)
+- `01-ALWAYS-INSPECT-DOMAINS` - Manually managed domains that must never bypass inspection (overrides all bypass mechanisms, including manual bypass lists and TLS error bypass)
+- `01-ALWAYS-INSPECT-HOSTS` - Manually managed exact hostnames that must never bypass inspection (overrides all bypass mechanisms, including manual bypass lists and TLS error bypass)
 
 **Data Flow:**
 1. `POST /` receives `zero_trust_network_sessions` logs filtered to `CLIENT_TLS_ERROR`
@@ -59,13 +63,13 @@ SNI Domain in $BLOCK_LIST → Block
 
 *Do Not Inspect - TLS Error Hosts (HTTP, 5 OR groups):*
 ```
-Each condition excludes both block lists — block/category always overrides bypass.
+Each condition excludes both block lists AND both always-inspect lists — block/category/always-inspect always overrides bypass.
 
-(Domain in $BYPASS_DOMAIN_LIST AND Domain not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST)
-OR (Host in $BYPASS_HOST_LIST AND Domain not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST)
-OR (Host in $TLS_ERROR_LIST AND Security Categories not in {dangerous} AND Domain not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST)
-OR (Host in $TLS_ERROR_LIST AND Content Categories not in {risky} AND Domain not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST)
-OR (Host in $TLS_ERROR_LIST AND Application Status is not unapproved AND Domain not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST)
+(Domain in $BYPASS_DOMAIN_LIST AND Domain not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST AND Domain not in $ALWAYS_INSPECT_DOMAIN_LIST AND Host not in $ALWAYS_INSPECT_HOST_LIST)
+OR (Host in $BYPASS_HOST_LIST AND Domain not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST AND Domain not in $ALWAYS_INSPECT_DOMAIN_LIST AND Host not in $ALWAYS_INSPECT_HOST_LIST)
+OR (Host in $TLS_ERROR_LIST AND Security Categories not in {dangerous} AND Domain not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST AND Domain not in $ALWAYS_INSPECT_DOMAIN_LIST AND Host not in $ALWAYS_INSPECT_HOST_LIST)
+OR (Host in $TLS_ERROR_LIST AND Content Categories not in {risky} AND Domain not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST AND Domain not in $ALWAYS_INSPECT_DOMAIN_LIST AND Host not in $ALWAYS_INSPECT_HOST_LIST)
+OR (Host in $TLS_ERROR_LIST AND Application Status is not unapproved AND Domain not in $DOMAIN_BLOCK_LIST AND Host not in $HOST_BLOCK_LIST AND Domain not in $ALWAYS_INSPECT_DOMAIN_LIST AND Host not in $ALWAYS_INSPECT_HOST_LIST)
 ```
 
 Selectors used in traffic expression:
@@ -105,6 +109,7 @@ Uses Cloudflare provider v5 pattern plus `http` and `time` providers.
 - Hostname validation: RFC-compliant, max 253 chars, alphanumeric + hyphen + dots
 - Partial success returns 207 status with `errors` array in response
 - **Gateway selector constraints by action:** Pre-TLS selectors (`http.conn.*`) are ONLY valid for the `off` (Do Not Inspect) action. Block/allow actions require post-TLS selectors (`http.request.*`). For example, use `http.conn.domains` in DNI policies but `http.request.domains` in block policies. The API returns error 2091 if you use the wrong selector type for an action.
+- **Always-inspect lists override all bypass:** `01-ALWAYS-INSPECT-DOMAINS` and `01-ALWAYS-INSPECT-HOSTS` prevent bypass for all 5 DNI conditions. This addresses the desktop app / system cert store gap: desktop applications that do not use the system certificate store (e.g., Electron-based apps, apps using `NODE_TLS_REJECT_UNAUTHORIZED=0`) generate `CLIENT_TLS_ERROR` events when running under inspection. Without the always-inspect lists, those TLS errors would cause the worker to add backend hostnames to the `01-BYPASS_CLIENT_TLS_ERROR_SNI` list — disabling inspection for those hosts for all users, including browsers where inspection works correctly. Add any host or domain that is inspectable via browser but problematic in a desktop client to the appropriate always-inspect list.
 - Logpush jobs depend on `time_sleep` to allow worker propagation before validation
 
 ## Configuration
