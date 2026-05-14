@@ -14,5 +14,8 @@ worker.js
 # Secrets
 .dev.vars
 
+# Claude Code
+CLAUDE.md
+
 # OS
 .DS_Store
