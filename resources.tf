@@ -10,6 +10,7 @@ resource "cloudflare_zero_trust_list" "tls_error_hosts" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = [items]
   }
 }
 
@@ -21,6 +22,7 @@ resource "cloudflare_zero_trust_list" "bypass_inspection" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = [items]
   }
 }
 
@@ -32,6 +34,7 @@ resource "cloudflare_zero_trust_list" "domain_blocklist" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = [items]
   }
 }
 
@@ -43,6 +46,7 @@ resource "cloudflare_zero_trust_list" "bypass_inspection_hosts" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = [items]
   }
 }
 
@@ -54,6 +58,7 @@ resource "cloudflare_zero_trust_list" "host_blocklist" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = [items]
   }
 }
 
@@ -65,6 +70,7 @@ resource "cloudflare_zero_trust_list" "always_inspect_domains" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = [items]
   }
 }
 
@@ -76,6 +82,7 @@ resource "cloudflare_zero_trust_list" "always_inspect_hosts" {
 
   lifecycle {
     prevent_destroy = true
+    ignore_changes  = [items]
   }
 }
 
