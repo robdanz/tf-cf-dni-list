@@ -52,3 +52,23 @@ output "dni_policy_precedence" {
   description = "Calculated precedence for the DNI policy (lower = higher priority)"
   value       = local.dni_precedence
 }
+
+output "always_inspect_domains_list_id" {
+  description = "ID of the always-inspect domains list (overrides all DNI bypass)"
+  value       = cloudflare_zero_trust_list.always_inspect_domains.id
+}
+
+output "always_inspect_domains_list_name" {
+  description = "Name of the always-inspect domains list"
+  value       = cloudflare_zero_trust_list.always_inspect_domains.name
+}
+
+output "always_inspect_hosts_list_id" {
+  description = "ID of the always-inspect hosts list (overrides all DNI bypass)"
+  value       = cloudflare_zero_trust_list.always_inspect_hosts.id
+}
+
+output "always_inspect_hosts_list_name" {
+  description = "Name of the always-inspect hosts list"
+  value       = cloudflare_zero_trust_list.always_inspect_hosts.name
+}
